@@ -26,7 +26,7 @@ func (d *DockerEngine) Close() error {
 	return d.cli.Close()
 }
 
-func (d *DockerEngine) ListContaienrs(ctx context.Context) ([]engine.ContainerSummary, error) {
+func (d *DockerEngine) ListContainers(ctx context.Context) ([]engine.ContainerSummary, error) {
 	result, err := d.cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, err
