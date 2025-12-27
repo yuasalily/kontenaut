@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yuasalily/kontenaut/internal/engine/docker"
+	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
 type model struct{}
@@ -34,19 +35,19 @@ func (m model) View() string {
 }
 
 func main() {
-
 	eng, err := docker.New()
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer func() { _ = eng.Close() }()
-	items, err := eng.ListContainers(context.Background())
+	uc := usecase.NewContainerUsecase(eng)
+	items, err := uc.List(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for _, c := range items {
-		fmt.Printf("%s\t%s\t%s", c.ID[:12], c.Image, c.Status)
+		fmt.Printf("%s\t%s\t%s\n", c.ID[:12], c.Image, c.Status)
 	}
 
 	// p := tea.NewProgram(model{})
