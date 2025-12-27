@@ -40,7 +40,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer func() { _ = eng.Close() }()
-	items, err := eng.ListContaienrs(context.Background())
+	items, err := eng.ListContainers(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
