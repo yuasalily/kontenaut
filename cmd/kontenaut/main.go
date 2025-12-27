@@ -12,7 +12,7 @@ import (
 
 type model struct{}
 
-// compole-time interface check
+// compile-time interface check
 var _ tea.Model = model{}
 
 func (m model) Init() tea.Cmd {
