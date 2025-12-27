@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"os"
+	"log"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yuasalily/kontenaut/internal/engine/docker"
 )
 
 type model struct{}
@@ -32,9 +34,24 @@ func (m model) View() string {
 }
 
 func main() {
-	p := tea.NewProgram(model{})
-	if _, err := p.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+
+	eng, err := docker.New()
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer func() { _ = eng.Close() }()
+	items, err := eng.ListContaienrs(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, c := range items {
+		fmt.Printf("%s\t%s\t%s", c.ID[:12], c.Image, c.Status)
+	}
+
+	// p := tea.NewProgram(model{})
+	// if _, err := p.Run(); err != nil {
+	// 	fmt.Fprintln(os.Stderr, err)
+	// 	os.Exit(1)
+	// }
 }
