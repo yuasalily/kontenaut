@@ -1,0 +1,37 @@
+{
+	"name": "kontenaut",
+	"image": "mcr.microsoft.com/devcontainers/base:noble",
+	"features": {
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
+		"ghcr.io/devcontainers/features/go:1": {}
+	},
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"files.autoSave": "afterDelay",
+				"files.autoSaveDelay": 1000,
+				"editor.minimap.enabled": false,
+				"editor.renderWhitespace": "boundary",
+				"editor.guides.bracketPairs": true,
+				"editor.lineHeight": 1.5,
+				"editor.fontSize": 16,
+				"editor.fontFamily": "'Source Code Pro', Consolas, monospace",
+				"editor.detectIndentation": true,
+				"editor.insertSpaces": true,
+				"editor.tabSize": 4,
+				"editor.suggestSelection": "first",
+				"editor.acceptSuggestionOnEnter": "smart",
+				"editor.formatOnSave": true,
+				"editor.codeActionsOnSave": {
+					"source.organizeImports": "explicit"
+				},
+				"editor.accessibilitySupport": "off",
+				"editor.smoothScrolling": false
+			},
+			"extensions": [
+				"golang.Go",
+				"windmilleng.vscode-go-autotest"
+			]
+		}
+	}
+}
