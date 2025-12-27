@@ -1,8 +1,8 @@
 package engine
 
 type ContainerSummary struct {
-	ID string
-	Name string
+	ID     string
+	Name   string
 	Status string
-	Image string
+	Image  string
 }
