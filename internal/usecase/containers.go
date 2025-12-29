@@ -3,7 +3,7 @@ package usecase
 import (
 	"context"
 
-	"github.com/yuasalily/kontenaut/internal/engine"
+	"github.com/yuasalily/kontenaut/internal/infra/engine"
 )
 
 type ContainerUsecase struct {

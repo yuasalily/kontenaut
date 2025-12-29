@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/moby/moby/client"
-	"github.com/yuasalily/kontenaut/internal/engine"
+	"github.com/yuasalily/kontenaut/internal/infra/engine"
 )
 
 type DockerEngine struct {
