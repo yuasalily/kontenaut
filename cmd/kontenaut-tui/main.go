@@ -4,7 +4,7 @@ import (
 	"log"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/yuasalily/kontenaut/internal/engine/docker"
+	"github.com/yuasalily/kontenaut/internal/infra/engine/docker"
 	"github.com/yuasalily/kontenaut/internal/ui/tui"
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
