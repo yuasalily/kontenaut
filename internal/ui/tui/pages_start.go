@@ -11,6 +11,9 @@ type startPage struct {
 	height int
 }
 
+// compile-time interface check
+var _ Page = startPage{}
+
 func newStartPage() Page { return startPage{} }
 
 func (p startPage) Init() tea.Cmd { return nil }

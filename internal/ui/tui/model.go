@@ -5,13 +5,6 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
-type screen int
-
-const (
-	screenStart screen = iota
-	screenContainers
-)
-
 type routerModel struct {
 	containerUC *usecase.ContainerUsecase
 

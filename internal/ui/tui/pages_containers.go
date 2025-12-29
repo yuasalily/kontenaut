@@ -24,6 +24,9 @@ type containersPage struct {
 	containersTable table.Model
 }
 
+// compile-time interface check
+var _ Page = containersPage{}
+
 func newContainersPage(containerUC *usecase.ContainerUsecase) Page {
 	return containersPage{
 		containerUC:     containerUC,
