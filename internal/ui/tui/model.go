@@ -11,9 +11,17 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
+type screen int
+
+const (
+	screenStart screen = iota
+	screenContainers
+)
+
 type model struct {
 	uc *usecase.ContainerUsecase
 
+	current screen
 	loading bool
 	items   []engine.ContainerSummary
 	err     error
@@ -30,13 +38,14 @@ var _ tea.Model = model{}
 func New(uc *usecase.ContainerUsecase) tea.Model {
 	return model{
 		uc:      uc,
+		current: screenStart,
 		loading: true,
 		table:   newTable(),
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return listContainersCmd(m.uc)
+	return nil
 }
 
 type containerMsg []engine.ContainerSummary
@@ -62,6 +71,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
+		case "enter", "s":
+			if m.current == screenStart {
+				m.current = screenContainers
+				m.loading = true
+				m.err = nil
+				m.items = nil
+				return m, listContainersCmd(m.uc)
+			}
 		}
 	case containerMsg:
 		m.loading = false
@@ -80,6 +97,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	if m.current == screenStart {
+		var b strings.Builder
+		b.WriteString("kontenaut\n\n")
+		b.WriteString("Press Enter to start\n")
+		b.WriteString("  - lists Docker containers\n\n")
+		b.WriteString("(enter: start, q: quit)\n")
+		return b.String()
+
+	}
 	if m.loading {
 		return "Loading..."
 	}
@@ -122,7 +148,7 @@ func (m *model) applyTableLayout() {
 	if m.width <= 0 || m.height <= 0 {
 		return
 	}
-	tableHeight := max(m.height - 4, 1)
+	tableHeight := max(m.height-4, 1)
 
 	m.table.SetWidth(m.width)
 	m.table.SetHeight(tableHeight)
