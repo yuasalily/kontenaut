@@ -57,6 +57,12 @@ func (m routerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyWindowSizeToCurrentPage()
 			return m, m.currentPage.Init()
 
+		case pageImages:
+			m.currentPageID = pageImages
+			m.currentPage = newImagesPage()
+			m.applyWindowSizeToCurrentPage()
+			return m, m.currentPage.Init()
+
 		case pageContainers:
 			m.currentPageID = pageContainers
 			m.currentPage = newContainersPage(m.containerUC)
