@@ -11,7 +11,7 @@ type imagesPage struct {
 	height int
 }
 
-// complile-time interface check
+// compile-time interface check
 var _ Page = imagesPage{}
 
 func newImagesPage() Page { return imagesPage{} }
