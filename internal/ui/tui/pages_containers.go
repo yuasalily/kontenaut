@@ -62,7 +62,7 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case containersLoadedMsg:
 		p.loading = false
 		p.containers = []engine.ContainerSummary(msg)
-		p.containersTable.SetRows(rowsFromSummaries(p.containers, p.containersTable.Columns()))
+		p.containersTable.SetRows(rowsFromContainerSummaries(p.containers, p.containersTable.Columns()))
 
 	case containersLoadFailedMsg:
 		p.loading = false
@@ -100,16 +100,16 @@ func (p containersPage) applyTableLayout() containersPage {
 	p.containersTable.SetWidth(p.width)
 	p.containersTable.SetHeight(tableHeight)
 
-	cols := columnsForWidth(p.width)
+	cols := columnsForContainersWidth(p.width)
 	p.containersTable.SetColumns(cols)
 	if len(p.containers) > 0 {
-		p.containersTable.SetRows(rowsFromSummaries(p.containers, cols))
+		p.containersTable.SetRows(rowsFromContainerSummaries(p.containers, cols))
 	}
 	return p
 }
 
 func newContainersTable() table.Model {
-	cols := columnsForWidth(0)
+	cols := columnsForContainersWidth(0)
 	t := table.New(
 		table.WithColumns(cols),
 		table.WithRows(nil),
@@ -118,7 +118,7 @@ func newContainersTable() table.Model {
 	return t
 }
 
-func columnsForWidth(total int) []table.Column {
+func columnsForContainersWidth(total int) []table.Column {
 	const (
 		idW     = 12
 		imageW  = 20
@@ -141,7 +141,7 @@ func columnsForWidth(total int) []table.Column {
 	}
 }
 
-func rowsFromSummaries(items []engine.ContainerSummary, cols []table.Column) []table.Row {
+func rowsFromContainerSummaries(items []engine.ContainerSummary, cols []table.Column) []table.Row {
 	getW := func(i int, fallback int) int {
 		if i < 0 || i >= len(cols) {
 			return fallback
@@ -161,16 +161,16 @@ func rowsFromSummaries(items []engine.ContainerSummary, cols []table.Column) []t
 			id = id[:idW]
 		}
 		out = append(out, table.Row{
-			trunc(id, idW),
-			trunc(c.Image, imageW),
-			trunc(c.Status, statusW),
-			trunc(c.Name, nameW),
+			truncContainer(id, idW),
+			truncContainer(c.Image, imageW),
+			truncContainer(c.Status, statusW),
+			truncContainer(c.Name, nameW),
 		})
 	}
 	return out
 }
 
-func trunc(s string, w int) string {
+func truncContainer(s string, w int) string {
 	if w <= 0 {
 		return ""
 	}

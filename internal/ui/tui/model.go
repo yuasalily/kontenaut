@@ -8,6 +8,7 @@ import (
 
 type routerModel struct {
 	containerUC *usecase.ContainerUsecase
+	imageUC     *usecase.ImageUsecase
 
 	width  int
 	height int
@@ -21,10 +22,11 @@ type routerModel struct {
 // compile-time interface check
 var _ tea.Model = routerModel{}
 
-func New(containerUC *usecase.ContainerUsecase) tea.Model {
+func New(containerUC *usecase.ContainerUsecase, imageUC *usecase.ImageUsecase) tea.Model {
 	p := newOverviewPage()
 	return routerModel{
 		containerUC:   containerUC,
+		imageUC:       imageUC,
 		nav:           NewNavBar(pageMetas()),
 		currentPageID: pageOverview,
 		currentPage:   p,
@@ -59,7 +61,7 @@ func (m routerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case pageImages:
 			m.currentPageID = pageImages
-			m.currentPage = newImagesPage()
+			m.currentPage = newImagesPage(m.imageUC)
 			m.applyWindowSizeToCurrentPage()
 			return m, m.currentPage.Init()
 
