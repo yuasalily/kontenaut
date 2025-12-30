@@ -64,8 +64,6 @@ func (d *DockerEngine) ListImages(ctx context.Context) ([]engine.ImageSummary, e
 			Size:      formatBytes(img.Size),
 			CreatedAt: createdAt,
 		})
-
-		return out, nil
 	}
 
 	return out, nil

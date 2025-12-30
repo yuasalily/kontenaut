@@ -156,12 +156,8 @@ func rowsFromContainerSummaries(items []engine.ContainerSummary, cols []table.Co
 
 	out := make([]table.Row, 0, len(items))
 	for _, c := range items {
-		id := c.ID
-		if len(id) > idW {
-			id = id[:idW]
-		}
 		out = append(out, table.Row{
-			truncContainer(id, idW),
+			truncContainer(c.ID, idW),
 			truncContainer(c.Image, imageW),
 			truncContainer(c.Status, statusW),
 			truncContainer(c.Name, nameW),
