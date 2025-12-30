@@ -1,5 +1,12 @@
 package engine
 
+type ImageSummary struct {
+	ID        string
+	RepoTags  string
+	Size      string
+	CreatedAt string
+}
+
 type ContainerSummary struct {
 	ID     string
 	Name   string
