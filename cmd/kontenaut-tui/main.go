@@ -16,7 +16,7 @@ func main() {
 	}
 	defer func() { _ = eng.Close() }()
 	uc := usecase.NewContainerUsecase(eng)
-	p := tea.NewProgram(tui.New(uc))
+	p := tea.NewProgram(tui.New(uc), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}

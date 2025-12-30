@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
@@ -35,13 +38,15 @@ func (m routerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		updated, cmd := m.currentPage.Update(msg)
-		m.currentPage = updated
-		return m, cmd
+		m.applyWindowSizeToCurrentPage()
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
+		}
+		if to, ok := pageIDFromKey(msg.String()); ok {
+			return m, func() tea.Msg { return navigateMsg{to: to} }
 		}
 	case navigateMsg:
 		switch msg.to {
@@ -65,16 +70,56 @@ func (m routerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m routerModel) View() string {
-	return m.currentPage.View()
+	nav := renderNavBar(m.currentPageID)
+	page := m.currentPage.View()
+	if nav == "" {
+		return page
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, nav, page)
 }
 
 func (m *routerModel) applyWindowSizeToCurrentPage() {
 	if m.width <= 0 || m.height <= 0 {
 		return
 	}
+	h := m.height - 1
+	if h < 1 {
+		h = 1
+	}
 	updated, _ := m.currentPage.Update(tea.WindowSizeMsg{
 		Width:  m.width,
 		Height: m.height,
 	})
 	m.currentPage = updated
+}
+
+func pageIDFromKey(k string) (pageID, bool) {
+	for _, meta := range pageMetas() {
+		if meta.Key == k {
+			return meta.ID, true
+		}
+	}
+	return 0, false
+}
+
+var (
+	navBaseStyle   = lipgloss.NewStyle().Padding(0, 1).Faint(true)
+	navActiveStyle = lipgloss.NewStyle().Padding(0, 1).Bold(true)
+)
+
+func renderNavBar(current pageID) string {
+	metas := pageMetas()
+	if len(metas) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(metas))
+	for _, meta := range metas {
+		label := "[" + meta.Key + "] " + meta.Title
+		if meta.ID == current {
+			parts = append(parts, navActiveStyle.Render(label))
+		} else {
+			parts = append(parts, navBaseStyle.Render(label))
+		}
+	}
+	return strings.Join(parts, "  ")
 }
