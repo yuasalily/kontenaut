@@ -22,11 +22,11 @@ type routerModel struct {
 var _ tea.Model = routerModel{}
 
 func New(containerUC *usecase.ContainerUsecase) tea.Model {
-	p := newStartPage()
+	p := newOverviewPage()
 	return routerModel{
 		containerUC:   containerUC,
 		nav:           NewNavBar(pageMetas()),
-		currentPageID: pageStart,
+		currentPageID: pageOverview,
 		currentPage:   p,
 	}
 }
@@ -51,9 +51,9 @@ func (m routerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case navigateMsg:
 		switch msg.to {
-		case pageStart:
-			m.currentPageID = pageStart
-			m.currentPage = newStartPage()
+		case pageOverview:
+			m.currentPageID = pageOverview
+			m.currentPage = newOverviewPage()
 			m.applyWindowSizeToCurrentPage()
 			return m, m.currentPage.Init()
 

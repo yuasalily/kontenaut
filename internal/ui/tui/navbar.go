@@ -45,7 +45,7 @@ func (n NavBar) View(current pageID) string {
 }
 
 func (n NavBar) PageIDFromKey(k string) (pageID, bool) {
-	for _, meta := range pageMetas() {
+	for _, meta := range n.metas {
 		if meta.Key == k {
 			return meta.ID, true
 		}

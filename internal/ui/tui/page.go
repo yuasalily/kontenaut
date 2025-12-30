@@ -5,7 +5,7 @@ import tea "github.com/charmbracelet/bubbletea"
 type pageID int
 
 const (
-	pageStart pageID = iota
+	pageOverview pageID = iota
 	pageContainers
 )
 
@@ -17,7 +17,7 @@ type PageMeta struct {
 
 func pageMetas() []PageMeta {
 	return []PageMeta{
-		{ID: pageStart, Title: "Start", Key: "1"},
+		{ID: pageOverview, Title: "Overview", Key: "1"},
 		{ID: pageContainers, Title: "Containers", Key: "2"},
 	}
 }
