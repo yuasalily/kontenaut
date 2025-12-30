@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"strings"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yuasalily/kontenaut/internal/usecase"
@@ -13,6 +11,8 @@ type routerModel struct {
 
 	width  int
 	height int
+
+	nav NavBar
 
 	currentPageID pageID
 	currentPage   Page
@@ -25,6 +25,7 @@ func New(containerUC *usecase.ContainerUsecase) tea.Model {
 	p := newStartPage()
 	return routerModel{
 		containerUC:   containerUC,
+		nav:           NewNavBar(pageMetas()),
 		currentPageID: pageStart,
 		currentPage:   p,
 	}
@@ -45,7 +46,7 @@ func (m routerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
 		}
-		if to, ok := pageIDFromKey(msg.String()); ok {
+		if to, ok := m.nav.PageIDFromKey(msg.String()); ok {
 			return m, func() tea.Msg { return navigateMsg{to: to} }
 		}
 	case navigateMsg:
@@ -70,7 +71,7 @@ func (m routerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m routerModel) View() string {
-	nav := renderNavBar(m.currentPageID)
+	nav := m.nav.View(m.currentPageID)
 	page := m.currentPage.View()
 	if nav == "" {
 		return page
@@ -82,44 +83,10 @@ func (m *routerModel) applyWindowSizeToCurrentPage() {
 	if m.width <= 0 || m.height <= 0 {
 		return
 	}
-	h := m.height - 1
-	if h < 1 {
-		h = 1
-	}
+	h := max(m.height-m.nav.Height(), 1)
 	updated, _ := m.currentPage.Update(tea.WindowSizeMsg{
 		Width:  m.width,
-		Height: m.height,
+		Height: h,
 	})
 	m.currentPage = updated
-}
-
-func pageIDFromKey(k string) (pageID, bool) {
-	for _, meta := range pageMetas() {
-		if meta.Key == k {
-			return meta.ID, true
-		}
-	}
-	return 0, false
-}
-
-var (
-	navBaseStyle   = lipgloss.NewStyle().Padding(0, 1).Faint(true)
-	navActiveStyle = lipgloss.NewStyle().Padding(0, 1).Bold(true)
-)
-
-func renderNavBar(current pageID) string {
-	metas := pageMetas()
-	if len(metas) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(metas))
-	for _, meta := range metas {
-		label := "[" + meta.Key + "] " + meta.Title
-		if meta.ID == current {
-			parts = append(parts, navActiveStyle.Render(label))
-		} else {
-			parts = append(parts, navBaseStyle.Render(label))
-		}
-	}
-	return strings.Join(parts, "  ")
 }
