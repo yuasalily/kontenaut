@@ -45,6 +45,11 @@ func (m routerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// グローバルキーの処理
+	if handled, cmd := m.handleGlobalKeys(msg); handled {
+		return m, cmd
+	}
+
 	// ダイアログの処理
 	if handled, cmd := m.handleDialog(msg); handled {
 		return m, cmd
@@ -60,9 +65,33 @@ func (m routerModel) View() string {
 	return m.normalView()
 }
 
+func (m *routerModel) handleGlobalKeys(msg tea.Msg) (bool, tea.Cmd) {
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return false, nil
+	}
+	switch km.String() {
+	case "q", "ctrl+c":
+		return true, tea.Quit
+	}
+	return false, nil
+}
+
 func (m *routerModel) handleDialog(msg tea.Msg) (bool, tea.Cmd) {
+	if smd, ok := msg.(showDialogMsg); ok {
+		m.dialog = newDialog(smd.kind, smd.title, smd.body)
+		m.applyWindowSizeToDialog()
+		return true, nil
+	}
+
 	if m.dialog == nil {
 		return false, nil
+	}
+
+	// ダイアログ表示中はKeyMsgを他ページに流さない
+	msg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return true, nil
 	}
 
 	closed := m.dialog.Update(msg)
@@ -80,19 +109,13 @@ func (m *routerModel) handleWindowSize(msg tea.Msg) (bool, tea.Cmd) {
 
 	m.width, m.height = ws.Width, ws.Height
 	m.applyWindowSizeToCurrentPage()
-	if m.dialog != nil {
-		_ = m.dialog.Update(ws)
-	}
+	m.applyWindowSizeToDialog()
 	return true, nil
 }
 
 func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c", "esc":
-			return m, tea.Quit
-		}
 		if to, ok := m.nav.PageIDFromKey(msg.String()); ok {
 			return m, func() tea.Msg { return navigateMsg{to: to} }
 		}
@@ -122,11 +145,6 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, showDialogCmd(dialogError, "Images", msg.err.Error())
 	case containersLoadFailedMsg:
 		return m, showDialogCmd(dialogError, "Containers", msg.err.Error())
-
-	case showDialogMsg:
-		m.dialog = newDialog(msg.kind, msg.title, msg.body)
-		m.applyWindowSizeToDialog()
-		return m, nil
 	}
 
 	updated, cmd := m.currentPage.Update(msg)
