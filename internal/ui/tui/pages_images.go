@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -21,6 +22,11 @@ type imagesPage struct {
 	height int
 
 	imagesTable table.Model
+
+	selected map[string]struct{}
+	locked   map[string]string
+	deleting bool
+	status   string
 }
 
 // compile-time interface check
@@ -31,6 +37,8 @@ func newImagesPage(imageUC *usecase.ImageUsecase) Page {
 		imageUC:     imageUC,
 		loading:     true,
 		imagesTable: newImagesTable(),
+		selected:    map[string]struct{}{},
+		locked:      map[string]string{},
 	}
 }
 
@@ -49,6 +57,35 @@ func listImagesCmd(imageUC *usecase.ImageUsecase) tea.Cmd {
 	}
 }
 
+type imagesDeletedMsg struct {
+	deleted  int
+	failed   int
+	firstErr error
+}
+
+func deleteImagesCmd(imagesUC *usecase.ImageUsecase, ids []string) tea.Cmd {
+	return func() tea.Msg {
+		deleted := 0
+		failed := 0
+		var firstErr error
+		for _, id := range ids {
+			if err := imagesUC.Delete(context.Background(), id); err != nil {
+				failed++
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			deleted++
+		}
+		return imagesDeletedMsg{
+			deleted:  deleted,
+			failed:   failed,
+			firstErr: firstErr,
+		}
+	}
+}
+
 func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -59,14 +96,61 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case imagesLoadedMsg:
 		p.loading = false
 		p.images = []engine.ImageSummary(msg)
-		p.imagesTable.SetRows(rowsFromImageSummaries(p.images, p.imagesTable.Columns()))
+		p.imagesTable.SetRows(rowsFromImageSummaries(p.images, p.imagesTable.Columns(), p.selected, p.locked))
 		return p, nil
 
 	case imagesLoadFailedMsg:
 		p.loading = false
 		p.err = msg.err
 		return p, nil
+
+	case imagesDeletedMsg:
+		p.deleting = false
+		p.selected = map[string]struct{}{}
+
+		if msg.failed == 0 {
+			p.status = "Deleted " + strconv.Itoa(msg.deleted) + " images"
+		} else if msg.firstErr != nil {
+			p.status = "Deleted " + strconv.Itoa(msg.deleted) + " images (failed " + strconv.Itoa(msg.failed) + "): " + msg.firstErr.Error()
+		} else {
+			p.status = "Deleted " + strconv.Itoa(msg.deleted) + " images (failed " + strconv.Itoa(msg.failed) + ")"
+		}
+
+		p.loading = true
+		return p, listImagesCmd(p.imageUC)
+
 	}
+
+	if km, ok := msg.(tea.KeyMsg); ok && !p.loading && !p.deleting {
+		switch km.String() {
+		case "space":
+			id, ok := p.cursorImageID()
+			if !ok {
+				return p, nil
+			}
+			if locked, reason := p.isLocked(id); locked {
+				if reason == "" {
+					p.status = "Locked image cannot be select be selected"
+				} else {
+					p.status = "Locked image cannot be select be selected: " + reason
+				}
+			}
+			p.toggleSeleted(id)
+			p.imagesTable.SetRows(rowsFromImageSummaries(p.images, p.imagesTable.Columns(), p.selected, p.locked))
+			return p, nil
+
+		case "d":
+			ids := p.selectedDeletableIDs()
+			if len(ids) == 0 {
+				p.status = "No deletable images selected"
+				return p, nil
+			}
+			p.deleting = true
+			p.status = "Deleting..."
+			return p, deleteImagesCmd(p.imageUC, ids)
+		}
+	}
+
 	var cmd tea.Cmd
 	p.imagesTable, cmd = p.imagesTable.Update(msg)
 	return p, cmd
@@ -76,11 +160,14 @@ func (p imagesPage) View() string {
 	if p.loading {
 		return "Loading..."
 	}
+	if p.deleting {
+		return "Deleting..."
+	}
 	var b strings.Builder
 	b.WriteString("Images\n")
 
 	b.WriteString(p.imagesTable.View())
-	b.WriteString("\n(q to quit)\n")
+	b.WriteString("\n(space: select, a: all, d: delete, q: quit)\n")
 	return b.String()
 }
 
@@ -96,7 +183,7 @@ func (p imagesPage) applyTableLayout() imagesPage {
 	cols := columnsForImagesWidth(p.width)
 	p.imagesTable.SetColumns(cols)
 	if len(p.images) > 0 {
-		p.imagesTable.SetRows(rowsFromImageSummaries(p.images, cols))
+		p.imagesTable.SetRows(rowsFromImageSummaries(p.images, cols, p.selected, p.locked))
 	}
 	return p
 }
@@ -113,6 +200,7 @@ func newImagesTable() table.Model {
 
 func columnsForImagesWidth(total int) []table.Column {
 	const (
+		selW     = 4
 		idW      = 12
 		sizeW    = 10
 		createdW = 12
@@ -120,13 +208,14 @@ func columnsForImagesWidth(total int) []table.Column {
 
 	repoW := 24
 	if total > 0 {
-		rest := total - (idW + sizeW + createdW) - 6
+		rest := total - (selW + idW + sizeW + createdW) - 8
 		if rest > repoW {
 			repoW = rest
 		}
 	}
 
 	return []table.Column{
+		{Title: "SEL", Width: selW},
 		{Title: "ID", Width: idW},
 		{Title: "REPO:TAG", Width: repoW},
 		{Title: "SIZE", Width: sizeW},
@@ -134,7 +223,7 @@ func columnsForImagesWidth(total int) []table.Column {
 	}
 }
 
-func rowsFromImageSummaries(items []engine.ImageSummary, cols []table.Column) []table.Row {
+func rowsFromImageSummaries(items []engine.ImageSummary, cols []table.Column, selected map[string]struct{}, locked map[string]string) []table.Row {
 	getW := func(i int, fallback int) int {
 		if i < 0 || i >= len(cols) {
 			return fallback
@@ -142,15 +231,24 @@ func rowsFromImageSummaries(items []engine.ImageSummary, cols []table.Column) []
 		return cols[i].Width
 	}
 
-	idW := getW(0, 12)
-	repoW := getW(1, 24)
-	sizeW := getW(2, 10)
-	createdW := getW(3, 12)
+	selW := getW(0, 4)
+	idW := getW(1, 12)
+	repoW := getW(2, 24)
+	sizeW := getW(3, 10)
+	createdW := getW(4, 12)
 
 	out := make([]table.Row, 0, len(items))
 	for _, img := range items {
+		sel := "[ ]"
+		if _, ok := locked[img.ID]; ok {
+			sel = "-"
+		} else if _, ok := selected[img.ID]; ok {
+			sel = "[x]"
+		}
+		displayID := strings.TrimPrefix(img.ID, "sha256:")
 		row := table.Row{
-			truncImage(img.ID, idW),
+			truncImage(sel, selW),
+			truncImage(displayID, idW),
 			truncImage(img.RepoTags, repoW),
 			truncImage(img.Size, sizeW),
 			truncImage(img.CreatedAt, createdW),
@@ -171,4 +269,61 @@ func truncImage(s string, w int) string {
 		return s[:w]
 	}
 	return s[:w-1] + "..."
+}
+
+func (p imagesPage) isLocked(id string) (bool, string) {
+	reason, ok := p.locked[id]
+	return ok, reason
+}
+
+func (p *imagesPage) toggleSeleted(id string) {
+	if _, ok := p.selected[id]; ok {
+		delete(p.selected, id)
+		return
+	}
+	p.selected[id] = struct{}{}
+}
+
+func (p imagesPage) cursorImageID() (string, bool) {
+	if len(p.images) == 0 {
+		return "", false
+	}
+	i := p.imagesTable.Cursor()
+	if i < 0 || i >= len(p.images) {
+		return "", false
+	}
+	return p.images[i].ID, true
+}
+
+func (p imagesPage) deletableIDs() []string {
+	out := make([]string, 0, len(p.images))
+	for _, img := range p.images {
+		if _, ok := p.locked[img.ID]; ok {
+			continue
+		}
+		out = append(out, img.ID)
+	}
+	return out
+}
+
+func (p imagesPage) countSelectedDeletable() int {
+	n := 0
+	for id := range p.selected {
+		if _, ok := p.locked[id]; ok {
+			continue
+		}
+		n++
+	}
+	return n
+}
+
+func (p imagesPage) selectedDeletableIDs() []string {
+	out := make([]string, 0, len(p.selected))
+	for id := range p.selected {
+		if _, ok := p.locked[id]; ok {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
 }
