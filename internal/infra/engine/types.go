@@ -8,8 +8,9 @@ type ImageSummary struct {
 }
 
 type ContainerSummary struct {
-	ID     string
-	Name   string
-	Status string
-	Image  string
+	ID      string
+	Name    string
+	Status  string
+	Image   string
+	ImageID string
 }
