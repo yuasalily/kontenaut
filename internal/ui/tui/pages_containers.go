@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -78,9 +77,6 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 func (p containersPage) View() string {
 	if p.loading {
 		return "Loading..."
-	}
-	if p.err != nil {
-		return fmt.Sprintf("Error: %v\n\n(q to quit)\n", p.err)
 	}
 
 	var b strings.Builder
