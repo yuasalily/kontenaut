@@ -2,7 +2,7 @@ package tui
 
 import (
 	"context"
-	"strconv"
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -139,11 +139,11 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 
 		var dlt tea.Cmd
 		if msg.failed == 0 {
-			dlt = showDialogCmd(dialogInfo, "Images", "Deleted "+strconv.Itoa(msg.deleted)+" image(s)")
+			dlt = showDialogCmd(dialogInfo, "Images", fmt.Sprintf("Deleted %d image(s)", msg.deleted))
 		} else {
-			body := "Deleted " + strconv.Itoa(msg.deleted) + " image(s). failed " + strconv.Itoa(msg.failed) + ")"
+			body := fmt.Sprintf("Deleted %d image(s). Failed %d image(s).", msg.deleted, msg.failed)
 			if msg.firstErr != nil {
-				body += "\n\n" + msg.firstErr.Error()
+				body = fmt.Sprintf("%s\n\n%s", body, msg.firstErr.Error())
 			}
 			dlt = showDialogCmd(dialogError, "Images", body)
 		}
