@@ -140,11 +140,6 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyWindowSizeToCurrentPage()
 			return m, m.currentPage.Init()
 		}
-
-	case imagesLoadFailedMsg:
-		return m, showDialogCmd(dialogError, "Images", msg.err.Error())
-	case containersLoadFailedMsg:
-		return m, showDialogCmd(dialogError, "Containers", msg.err.Error())
 	}
 
 	updated, cmd := m.currentPage.Update(msg)

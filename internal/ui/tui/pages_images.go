@@ -18,7 +18,6 @@ type imagesPage struct {
 	deleting bool
 
 	images []engine.ImageSummary
-	err    error
 
 	width  int
 	height int
@@ -119,8 +118,8 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 
 	case imagesLoadFailedMsg:
 		p.loading = false
-		p.err = msg.err
-		return p, nil
+		p.deleting = false
+		return p, showDialogCmd(dialogError, "Images", msg.err.Error())
 
 	case lockedImagesLoadedMsg:
 		p.locked = map[string]struct{}(msg)

@@ -15,7 +15,6 @@ type containersPage struct {
 
 	loading    bool
 	containers []engine.ContainerSummary
-	err        error
 
 	width  int
 	height int
@@ -65,8 +64,7 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 
 	case containersLoadFailedMsg:
 		p.loading = false
-		p.err = msg.err
-		return p, nil
+		return p, showDialogCmd(dialogError, "Containers", msg.err.Error())
 	}
 
 	var cmd tea.Cmd
