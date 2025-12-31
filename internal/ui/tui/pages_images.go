@@ -147,7 +147,7 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			}
 			dlt = showDialogCmd(dialogError, "Images", body)
 		}
-		return p, tea.Sequence(listImagesCmd(p.imageUC), dlt)
+		return p, tea.Sequence(tea.Batch(listImagesCmd(p.imageUC), listLockedImagesCmd(p.imageUC)), dlt)
 
 	}
 
