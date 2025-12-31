@@ -42,7 +42,12 @@ func newImagesPage(imageUC *usecase.ImageUsecase) Page {
 	}
 }
 
-func (p imagesPage) Init() tea.Cmd { return listImagesCmd(p.imageUC) }
+func (p imagesPage) Init() tea.Cmd {
+	return tea.Batch(
+		listImagesCmd(p.imageUC),
+		listLockedImagesCmd(p.imageUC),
+	)
+}
 
 type imagesLoadedMsg []engine.ImageSummary
 type imagesLoadFailedMsg struct{ err error }
@@ -54,6 +59,19 @@ func listImagesCmd(imageUC *usecase.ImageUsecase) tea.Cmd {
 			return imagesLoadFailedMsg{err: err}
 		}
 		return imagesLoadedMsg(items)
+	}
+}
+
+type lockedImagesLoadedMsg map[string]struct{}
+type lockedImagesLoadFailedMsg struct{ err error }
+
+func listLockedImagesCmd(imageUC *usecase.ImageUsecase) tea.Cmd {
+	return func() tea.Msg {
+		locked, err := imageUC.LockedImageIDs(context.Background())
+		if err != nil {
+			return lockedImagesLoadFailedMsg{err: err}
+		}
+		return lockedImagesLoadedMsg(locked)
 	}
 }
 
@@ -103,6 +121,16 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p.loading = false
 		p.err = msg.err
 		return p, nil
+
+	case lockedImagesLoadedMsg:
+		p.locked = map[string]struct{}(msg)
+		if len(p.images) > 0 {
+			p.imagesTable.SetRows(rowsFromImageSummaries(p.images, p.imagesTable.Columns(), p.selected, p.locked))
+		}
+		return p, nil
+
+	case lockedImagesLoadFailedMsg:
+		return p, showDialogCmd(dialogError, "Images", msg.err.Error())
 
 	case imagesDeletedMsg:
 		p.deleting = false
@@ -238,7 +266,7 @@ func rowsFromImageSummaries(items []engine.ImageSummary, cols []table.Column, se
 	for _, img := range items {
 		sel := "[ ]"
 		if _, ok := locked[img.ID]; ok {
-			sel = "-"
+			sel = "[#]"
 		} else if _, ok := selected[img.ID]; ok {
 			sel = "[x]"
 		}

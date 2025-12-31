@@ -21,3 +21,19 @@ func (u *ImageUsecase) List(ctx context.Context) ([]engine.ImageSummary, error) 
 func (u *ImageUsecase) Delete(ctx context.Context, imageID string) error {
 	return u.eng.RemoveImage(ctx, imageID)
 }
+
+func (u *ImageUsecase) LockedImageIDs(ctx context.Context) (map[string]struct{}, error) {
+	containers, err := u.eng.ListContainers(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	locked := make(map[string]struct{}, len(containers))
+	for _, c := range containers {
+		if c.ImageID == "" {
+			continue
+		}
+		locked[c.ImageID] = struct{}{}
+	}
+	return locked, nil
+}
