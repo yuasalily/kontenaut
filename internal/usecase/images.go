@@ -17,3 +17,7 @@ func NewImageUsecase(eng engine.Engine) *ImageUsecase {
 func (u *ImageUsecase) List(ctx context.Context) ([]engine.ImageSummary, error) {
 	return u.eng.ListImages(ctx)
 }
+
+func (u *ImageUsecase) Delete(ctx context.Context, imageID string) error {
+	return u.eng.RemoveImage(ctx, imageID)
+}

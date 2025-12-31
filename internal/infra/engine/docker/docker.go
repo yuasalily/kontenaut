@@ -37,12 +37,6 @@ func (d *DockerEngine) ListImages(ctx context.Context) ([]engine.ImageSummary, e
 
 	out := make([]engine.ImageSummary, 0, len(result.Items))
 	for _, img := range result.Items {
-		id := img.ID
-		id = strings.TrimPrefix(id, "sha256:")
-		if len(id) > 12 {
-			id = id[:12]
-		}
-
 		repoTags := "<none>"
 		if len(img.RepoTags) > 0 {
 			first := img.RepoTags[0]
@@ -59,7 +53,7 @@ func (d *DockerEngine) ListImages(ctx context.Context) ([]engine.ImageSummary, e
 		}
 
 		out = append(out, engine.ImageSummary{
-			ID:        id,
+			ID:        img.ID,
 			RepoTags:  repoTags,
 			Size:      formatBytes(img.Size),
 			CreatedAt: createdAt,
@@ -91,6 +85,14 @@ func (d *DockerEngine) ListContainers(ctx context.Context) ([]engine.ContainerSu
 	}
 
 	return out, nil
+}
+
+func (d *DockerEngine) RemoveImage(ctx context.Context, imageID string) error {
+	_, err := d.cli.ImageRemove(ctx, imageID, client.ImageRemoveOptions{
+		Force:         false,
+		PruneChildren: false,
+	})
+	return err
 }
 
 func formatBytes(n int64) string {
