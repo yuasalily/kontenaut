@@ -89,8 +89,8 @@ func (d *DockerEngine) ListContainers(ctx context.Context) ([]engine.ContainerSu
 
 func (d *DockerEngine) RemoveImage(ctx context.Context, imageID string) error {
 	_, err := d.cli.ImageRemove(ctx, imageID, client.ImageRemoveOptions{
-		Force:         true,
-		PruneChildren: true,
+		Force:         false,
+		PruneChildren: false,
 	})
 	return err
 }
