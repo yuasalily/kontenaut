@@ -1,3 +1,6 @@
+## 0.0.28
+- Overview実装
+
 ## 0.0.27
 - ダイアログのkey入力をKeyMap化
 - gofmt
