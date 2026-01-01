@@ -80,8 +80,8 @@ func (p overviewPage) View() string {
 
 	b.WriteString("Docker daemon: OK\n\n")
 	b.WriteString(fmt.Sprintf("Version: %s\n", p.info.ServerVersion))
-	b.WriteString(fmt.Sprintf("OS: %s\n\n", p.info.OperationgSystem))
-	
+	b.WriteString(fmt.Sprintf("OS: %s\n\n", p.info.OperatingSystem))
+
 	b.WriteString("q: quit\n")
 	return b.String()
 }

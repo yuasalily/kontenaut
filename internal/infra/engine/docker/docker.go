@@ -41,8 +41,8 @@ func (d *DockerEngine) DaemonInfo(ctx context.Context) (engine.DaemonInfo, error
 	}
 
 	return engine.DaemonInfo{
-		ServerVersion:    info.Info.ServerVersion,
-		OperationgSystem: os,
+		ServerVersion:   info.Info.ServerVersion,
+		OperatingSystem: os,
 	}, nil
 
 }
