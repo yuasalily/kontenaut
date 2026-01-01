@@ -146,6 +146,14 @@ func (m *routerModel) handleWindowSize(msg tea.Msg) (bool, tea.Cmd) {
 	return true, nil
 }
 
+func (m routerModel) closeCurrentPageCmd() tea.Cmd {
+	// Optional Close lifecycle hook
+	if c, ok := m.currentPage.(PageCloser); ok {
+		return c.Close()
+	}
+	return nil
+}
+
 func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -154,24 +162,27 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case navigateMsg:
+		// Close the current page (if supported) right before navigation.
+		// NOTE: closeCmd is generated before currentPage is replaced.
+		closeCmd := m.closeCurrentPageCmd()
 		switch msg.to {
 		case pageOverview:
 			m.currentPageID = pageOverview
 			m.currentPage = newOverviewPage(m.daemonUC)
 			m.applyWindowSizeToCurrentPage()
-			return m, m.currentPage.Init()
+			return m, tea.Batch(closeCmd, m.currentPage.Init())
 
 		case pageImages:
 			m.currentPageID = pageImages
 			m.currentPage = newImagesPage(m.imageUC)
 			m.applyWindowSizeToCurrentPage()
-			return m, m.currentPage.Init()
+			return m, tea.Batch(closeCmd, m.currentPage.Init())
 
 		case pageContainers:
 			m.currentPageID = pageContainers
 			m.currentPage = newContainersPage(m.containerUC)
 			m.applyWindowSizeToCurrentPage()
-			return m, m.currentPage.Init()
+			return m, tea.Batch(closeCmd, m.currentPage.Init())
 		}
 	}
 

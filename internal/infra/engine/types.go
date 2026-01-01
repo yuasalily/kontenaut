@@ -1,8 +1,8 @@
 package engine
 
 type DaemonInfo struct {
-	ServerVersion    string
-	OperationgSystem string
+	ServerVersion   string
+	OperatingSystem string
 }
 
 type ImageSummary struct {
