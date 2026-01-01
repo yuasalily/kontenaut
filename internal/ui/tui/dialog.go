@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -59,6 +60,8 @@ type dialogModel struct {
 	title string
 	body  string
 
+	km dialogKeyMap
+
 	width  int
 	height int
 }
@@ -68,6 +71,7 @@ func newDialog(kind dialogKind, title, body string) *dialogModel {
 		kind:  kind,
 		title: title,
 		body:  body,
+		km:    newDialogKeyMap(kind),
 	}
 }
 
@@ -79,15 +83,15 @@ func (d *dialogModel) Update(msg tea.Msg) (closed bool, ok bool) {
 	case tea.KeyMsg:
 		switch d.kind {
 		case dialogConfirm:
-			switch msg.String() {
-			case "enter", "y":
+			if key.Matches(msg, d.km.Yes) {
 				return true, true
-			case "esc", "n":
+			}
+			if key.Matches(msg, d.km.No) {
 				return true, false
 			}
+
 		case dialogInfo, dialogError:
-			switch msg.String() {
-			case "enter", "esc":
+			if key.Matches(msg, d.km.Close) {
 				return true, false
 			}
 		}
@@ -95,23 +99,12 @@ func (d *dialogModel) Update(msg tea.Msg) (closed bool, ok bool) {
 	return false, false
 }
 
-func footerTextForDialog(kind dialogKind) string {
-	switch kind {
-	case dialogConfirm:
-		return "y/enter: yes  n/esc: no"
-	case dialogInfo, dialogError:
-		return "enter/esc: close"
-	default:
-		return "enter/esc: close"
-	}
-}
-
 func (d *dialogModel) View() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 
 	frame := lipgloss.NewStyle().Padding(1, 2).Border(lipgloss.RoundedBorder())
 
-	footer := lipgloss.NewStyle().Faint(true).Render(footerTextForDialog(d.kind))
+	footer := lipgloss.NewStyle().Faint(true).Render(dialogFooter(d.kind, d.km))
 
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(d.title))
