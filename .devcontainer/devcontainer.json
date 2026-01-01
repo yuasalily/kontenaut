@@ -10,6 +10,8 @@
 			"settings": {
 				"files.autoSave": "afterDelay",
 				"files.autoSaveDelay": 1000,
+				"files.insertFinalNewline": true,
+				"files.trimFinalNewlines": false,
 				"editor.minimap.enabled": false,
 				"editor.renderWhitespace": "boundary",
 				"editor.guides.bracketPairs": true,
