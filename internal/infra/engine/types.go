@@ -1,5 +1,10 @@
 package engine
 
+type DaemonInfo struct {
+	ServerVersion    string
+	OperationgSystem string
+}
+
 type ImageSummary struct {
 	ID        string
 	RepoTags  string

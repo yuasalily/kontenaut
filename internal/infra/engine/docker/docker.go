@@ -29,6 +29,24 @@ func (d *DockerEngine) Close() error {
 	return d.cli.Close()
 }
 
+func (d *DockerEngine) DaemonInfo(ctx context.Context) (engine.DaemonInfo, error) {
+	info, err := d.cli.Info(ctx, client.InfoOptions{})
+	if err != nil {
+		return engine.DaemonInfo{}, err
+	}
+
+	os := info.Info.OperatingSystem
+	if os == "" {
+		os = info.Info.OSType
+	}
+
+	return engine.DaemonInfo{
+		ServerVersion:    info.Info.ServerVersion,
+		OperationgSystem: os,
+	}, nil
+
+}
+
 func (d *DockerEngine) ListImages(ctx context.Context) ([]engine.ImageSummary, error) {
 	result, err := d.cli.ImageList(ctx, client.ImageListOptions{All: true})
 	if err != nil {

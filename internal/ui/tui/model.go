@@ -16,6 +16,7 @@ func (s modalSession) isConfirm() bool { return s.confirmID != "" }
 type routerModel struct {
 	containerUC *usecase.ContainerUsecase
 	imageUC     *usecase.ImageUsecase
+	daemonUC    *usecase.DaemonUsecase
 
 	width  int
 	height int
@@ -31,11 +32,12 @@ type routerModel struct {
 // compile-time interface check
 var _ tea.Model = routerModel{}
 
-func New(containerUC *usecase.ContainerUsecase, imageUC *usecase.ImageUsecase) tea.Model {
-	p := newOverviewPage()
+func New(containerUC *usecase.ContainerUsecase, imageUC *usecase.ImageUsecase, daemonUC *usecase.DaemonUsecase) tea.Model {
+	p := newOverviewPage(daemonUC)
 	return routerModel{
 		containerUC:   containerUC,
 		imageUC:       imageUC,
+		daemonUC:      daemonUC,
 		nav:           NewNavBar(pageMetas()),
 		currentPageID: pageOverview,
 		currentPage:   p,
@@ -95,7 +97,7 @@ func (m *routerModel) handleDialog(msg tea.Msg) (bool, tea.Cmd) {
 		return true, nil
 	case openConfirmDialogMsg:
 		m.modal = modalSession{
-			dialog: newDialog(dialogConfirm, x.title, x.body),
+			dialog:    newDialog(dialogConfirm, x.title, x.body),
 			confirmID: x.id,
 		}
 		m.applyWindowSizeToDialog()
@@ -155,7 +157,7 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.to {
 		case pageOverview:
 			m.currentPageID = pageOverview
-			m.currentPage = newOverviewPage()
+			m.currentPage = newOverviewPage(m.daemonUC)
 			m.applyWindowSizeToCurrentPage()
 			return m, m.currentPage.Init()
 
