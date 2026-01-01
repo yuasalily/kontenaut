@@ -11,6 +11,8 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
+const confirmDeleteImages ConfirmID = "images:delete"
+
 type imagesPage struct {
 	imageUC *usecase.ImageUsecase
 
@@ -26,6 +28,8 @@ type imagesPage struct {
 
 	selected map[string]struct{}
 	locked   map[string]struct{}
+
+	pendingDeleteIDs []string
 }
 
 // compile-time interface check
@@ -119,7 +123,7 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case imagesLoadFailedMsg:
 		p.loading = false
 		p.deleting = false
-		return p, showDialogCmd(dialogError, "Images", msg.err.Error())
+		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
 
 	case lockedImagesLoadedMsg:
 		p.locked = map[string]struct{}(msg)
@@ -129,23 +133,36 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		return p, nil
 
 	case lockedImagesLoadFailedMsg:
-		return p, showDialogCmd(dialogError, "Images", msg.err.Error())
+		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
+
+	case confirmDialogResolvedMsg:
+		if msg.id != confirmDeleteImages {
+			return p, nil
+		}
+
+		ids := p.pendingDeleteIDs
+		p.pendingDeleteIDs = nil
+
+		if !msg.ok || len(ids) == 0 {
+			return p, nil
+		}
+		p.deleting = true
+		return p, deleteImagesCmd(p.imageUC, ids)
 
 	case imagesDeletedMsg:
 		p.deleting = false
-		p.selected = map[string]struct{}{}
-
 		p.loading = true
+		p.selected = map[string]struct{}{}
 
 		var dlt tea.Cmd
 		if msg.failed == 0 {
-			dlt = showDialogCmd(dialogInfo, "Images", fmt.Sprintf("Deleted %d image(s)", msg.deleted))
+			dlt = openDialogCmd(dialogInfo, "Images", fmt.Sprintf("Deleted %d image(s)", msg.deleted))
 		} else {
 			body := fmt.Sprintf("Deleted %d image(s). Failed %d image(s).", msg.deleted, msg.failed)
 			if msg.firstErr != nil {
 				body = fmt.Sprintf("%s\n\n%s", body, msg.firstErr.Error())
 			}
-			dlt = showDialogCmd(dialogError, "Images", body)
+			dlt = openDialogCmd(dialogError, "Images", body)
 		}
 		return p, tea.Sequence(tea.Batch(listImagesCmd(p.imageUC), listLockedImagesCmd(p.imageUC)), dlt)
 
@@ -168,10 +185,11 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		case "d":
 			ids := p.selectedDeletableIDs()
 			if len(ids) == 0 {
-				return p, showDialogCmd(dialogInfo, "Images", "No images selected")
+				return p, openDialogCmd(dialogInfo, "Images", "No images selected")
 			}
-			p.deleting = true
-			return p, deleteImagesCmd(p.imageUC, ids)
+			p.pendingDeleteIDs = ids
+			body := fmt.Sprintf("Delete %d image(s)?", len(ids))
+			return p, openConfirmDialogCmd(confirmDeleteImages, "Images", body)
 		}
 	}
 

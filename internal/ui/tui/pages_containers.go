@@ -64,7 +64,7 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 
 	case containersLoadFailedMsg:
 		p.loading = false
-		return p, showDialogCmd(dialogError, "Containers", msg.err.Error())
+		return p, openDialogCmd(dialogError, "Containers", msg.err.Error())
 	}
 
 	var cmd tea.Cmd

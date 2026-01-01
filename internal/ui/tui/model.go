@@ -6,6 +6,13 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
+type modalSession struct {
+	dialog    *dialogModel
+	confirmID ConfirmID // confirm dialog出ない場合は空
+}
+
+func (s modalSession) isConfirm() bool { return s.confirmID != "" }
+
 type routerModel struct {
 	containerUC *usecase.ContainerUsecase
 	imageUC     *usecase.ImageUsecase
@@ -18,7 +25,7 @@ type routerModel struct {
 	currentPageID pageID
 	currentPage   Page
 
-	dialog *dialogModel
+	modal modalSession
 }
 
 // compile-time interface check
@@ -78,27 +85,51 @@ func (m *routerModel) handleGlobalKeys(msg tea.Msg) (bool, tea.Cmd) {
 }
 
 func (m *routerModel) handleDialog(msg tea.Msg) (bool, tea.Cmd) {
-	if smd, ok := msg.(showDialogMsg); ok {
-		m.dialog = newDialog(smd.kind, smd.title, smd.body)
+	// ダイアログのオープン
+	switch x := msg.(type) {
+	case openDialogMsg:
+		m.modal = modalSession{
+			dialog: newDialog(x.kind, x.title, x.body),
+		}
+		m.applyWindowSizeToDialog()
+		return true, nil
+	case openConfirmDialogMsg:
+		m.modal = modalSession{
+			dialog: newDialog(dialogConfirm, x.title, x.body),
+			confirmID: x.id,
+		}
 		m.applyWindowSizeToDialog()
 		return true, nil
 	}
 
-	if m.dialog == nil {
+	// モーダルが無ければ処理しない
+	if m.modal.dialog == nil {
 		return false, nil
 	}
 
-	// ダイアログ表示中はKeyMsgを他ページに流さない
-	msg, ok := msg.(tea.KeyMsg)
+	// モーダル表示中はKeyMsgを他ページに流さない
+	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return true, nil
 	}
 
-	closed := m.dialog.Update(msg)
-	if closed {
-		m.dialog = nil
+	// 確認ダイアログの結果がokResultに格納される
+	closed, okResult := m.modal.dialog.Update(km)
+	if !closed {
+		return true, nil
 	}
-	return true, nil
+
+	// モーダルのクローズ処理
+	s := m.modal
+	m.modal = modalSession{}
+	// 確認モーダルでない場合はそのまま閉じる
+	if !s.isConfirm() {
+		return true, nil
+	}
+	// 確認モーダルの場合は結果を流す
+	return true, func() tea.Msg {
+		return confirmDialogResolvedMsg{id: s.confirmID, ok: okResult}
+	}
 }
 
 func (m *routerModel) handleWindowSize(msg tea.Msg) (bool, tea.Cmd) {
@@ -148,10 +179,10 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m routerModel) dialogView() (string, bool) {
-	if m.dialog == nil {
+	if m.modal.dialog == nil {
 		return "", false
 	}
-	return m.dialog.View(), true
+	return m.modal.dialog.View(), true
 }
 
 func (m routerModel) normalView() string {
@@ -176,13 +207,13 @@ func (m *routerModel) applyWindowSizeToCurrentPage() {
 }
 
 func (m *routerModel) applyWindowSizeToDialog() {
-	if m.dialog == nil {
+	if m.modal.dialog == nil {
 		return
 	}
 	if m.width <= 0 || m.height <= 0 {
 		return
 	}
-	_ = m.dialog.Update(tea.WindowSizeMsg{
+	_, _ = m.modal.dialog.Update(tea.WindowSizeMsg{
 		Width:  m.width,
 		Height: m.height,
 	})
