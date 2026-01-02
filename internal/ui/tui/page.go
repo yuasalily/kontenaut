@@ -26,6 +26,11 @@ func pageMetas() []PageMeta {
 
 type navigateMsg struct{ to pageID }
 
+type openLogsMsg struct {
+	id string
+	name string
+}
+
 type Page interface {
 	Init() tea.Cmd
 	Update(tea.Msg) (Page, tea.Cmd)

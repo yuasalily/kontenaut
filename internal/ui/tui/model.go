@@ -161,6 +161,13 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return navigateMsg{to: to} }
 		}
 
+	case openLogsMsg:
+		closeCmd := m.closeCurrentPageCmd()
+		m.currentPageID = pageContainers
+		m.currentPage = newLogsPage(m.containerUC, msg.id, msg.name)
+		m.applyWindowSizeToCurrentPage()
+		return m, tea.Batch(closeCmd, m.currentPage.Init())
+
 	case navigateMsg:
 		// Close the current page (if supported) right before navigation.
 		// NOTE: closeCmd is generated before currentPage is replaced.
