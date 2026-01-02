@@ -17,3 +17,7 @@ func NewContainerUsecase(eng engine.Engine) *ContainerUsecase {
 func (u *ContainerUsecase) List(ctx context.Context) ([]engine.ContainerSummary, error) {
 	return u.eng.ListContainers(ctx)
 }
+
+func (u *ContainerUsecase) Logs(ctx context.Context, containerID string, tail int) ([]string, error) {
+	return u.eng.ContainerLogs(ctx, containerID, tail)
+}

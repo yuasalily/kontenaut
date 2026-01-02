@@ -67,6 +67,23 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		return p, openDialogCmd(dialogError, "Containers", msg.err.Error())
 	}
 
+	if km, ok := msg.(tea.KeyMsg); ok && !p.loading {
+		switch km.String() {
+		case "enter":
+			c, ok := p.cursorContainer()
+			if !ok {
+				return p, nil
+			}
+			name := c.Name
+			if name == "" {
+				name = "Unnamed"
+			}
+			return p, func() tea.Msg {
+				return openLogsMsg{id: c.ID, name: name}
+			}
+		}
+	}
+
 	var cmd tea.Cmd
 	p.containersTable, cmd = p.containersTable.Update(msg)
 	return p, cmd
@@ -158,6 +175,17 @@ func rowsFromContainerSummaries(items []engine.ContainerSummary, cols []table.Co
 		})
 	}
 	return out
+}
+
+func (p containersPage) cursorContainer() (engine.ContainerSummary, bool) {
+	if len(p.containers) == 0 {
+		return engine.ContainerSummary{}, false
+	}
+	i := p.containersTable.Cursor()
+	if i < 0 || i >= len(p.containers) {
+		return engine.ContainerSummary{}, false
+	}
+	return p.containers[i], true
 }
 
 func truncContainer(s string, w int) string {

@@ -1,12 +1,16 @@
 package docker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/client"
 	"github.com/yuasalily/kontenaut/internal/infra/engine"
 )
@@ -112,6 +116,47 @@ func (d *DockerEngine) RemoveImage(ctx context.Context, imageID string) error {
 		PruneChildren: false,
 	})
 	return err
+}
+
+func (d *DockerEngine) ContainerLogs(ctx context.Context, containerID string, tail int) ([]string, error) {
+	if tail <= 0 {
+		tail = 200
+	}
+
+	rc, err := d.cli.ContainerLogs(ctx, containerID, client.ContainerLogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     false,
+		Tail:       strconv.Itoa(tail),
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rc.Close() }()
+
+	raw, rerr := io.ReadAll(rc)
+	if rerr != nil {
+		return nil, rerr
+	}
+	if len(raw) == 0 {
+		return nil, nil
+	}
+
+	var buf bytes.Buffer
+	_, derr := stdcopy.StdCopy(&buf, &buf, bytes.NewReader(raw))
+	if derr != nil || buf.Len() == 0 {
+		buf.Reset()
+		_, _ = buf.Write(raw)
+
+	}
+
+	s := buf.String()
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.TrimRight(s, "\n")
+	if s == "" {
+		return nil, nil
+	}
+	return strings.Split(s, "\n"), nil
 }
 
 func formatBytes(n int64) string {
