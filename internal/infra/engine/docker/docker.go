@@ -159,6 +159,23 @@ func (d *DockerEngine) ContainerLogs(ctx context.Context, containerID string, ta
 	return strings.Split(s, "\n"), nil
 }
 
+func (d *DockerEngine) ContainerLogsFollow(ctx context.Context, containerID string, tail int) (io.ReadCloser, error) {
+	if tail <= 0 {
+		tail = 200
+	}
+
+	rc, err := d.cli.ContainerLogs(ctx, containerID, client.ContainerLogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     true,
+		Tail:       strconv.Itoa(tail),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rc, nil
+}
+
 func formatBytes(n int64) string {
 	if n < 0 {
 		return "0 B"
