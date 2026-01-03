@@ -81,9 +81,11 @@ docker run -d \
   alpine sh -c "
     i=1;
     while true; do
-      echo \"[LOG] tick looooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong \$i\";
+      LEN=\$(( (RANDOM % 200) + 20 ));
+      STR=\$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c \$LEN);
+      echo \"[LOG] tick \$STR \$i\";
       i=\$((i+1));
-      sleep 0.005;
+      sleep 0.05;
     done
   "
 
