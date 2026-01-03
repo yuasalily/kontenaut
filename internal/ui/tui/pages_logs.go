@@ -1,16 +1,13 @@
 package tui
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
@@ -30,8 +27,7 @@ type logsPage struct {
 
 	// follow state
 	cancel context.CancelFunc
-	rc     io.ReadCloser
-	sc     *bufio.Scanner
+	ch     <-chan usecase.LogEvent
 	pinned bool // if true, auto-follow (GotoBottom) on new lines
 }
 
@@ -53,34 +49,34 @@ func newLogsPage(containerUC *usecase.ContainerUsecase, containerID, containerNa
 
 type logsFollowStartedMsg struct {
 	cancel context.CancelFunc
-	rc     io.ReadCloser
+	ch     <-chan usecase.LogEvent
 }
 
 type logsFollowFailedMsg struct{ err error }
-type logsLineMsg struct{ line string }
-type logsFollowStoppedMsg struct{ err error }
+type logsEventReceivedMsg struct {
+	ev usecase.LogEvent
+	ok bool
+}
 
 func startFollowLogsCmd(containerUC *usecase.ContainerUsecase, containerID string, tail int) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
-		rc, err := containerUC.LogsFollow(ctx, containerID, tail)
+		ch, err := containerUC.FollowLogs(ctx, containerID, tail)
 		if err != nil {
 			cancel()
 			return logsFollowFailedMsg{err: err}
 		}
-		return logsFollowStartedMsg{cancel: cancel, rc: rc}
+		return logsFollowStartedMsg{cancel: cancel, ch: ch}
 	}
 }
 
-func readNextLogLineCmd(sc *bufio.Scanner) tea.Cmd {
+func waitNextLogEventCmd(ch <-chan usecase.LogEvent) tea.Cmd {
 	return func() tea.Msg {
-		if sc == nil {
-			return logsFollowStoppedMsg{err: fmt.Errorf("log scanner is nil")}
+		if ch == nil {
+			return logsFollowFailedMsg{err: fmt.Errorf("log channel is nil")}
 		}
-		if sc.Scan() {
-			return logsLineMsg{line: sc.Text()}
-		}
-		return logsFollowStoppedMsg{err: sc.Err()}
+		ev, ok := <-ch
+		return logsEventReceivedMsg{ev: ev, ok: ok}
 	}
 }
 
@@ -121,47 +117,35 @@ func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case logsFollowStartedMsg:
 		p.loading = false
 		p.cancel = msg.cancel
-		p.rc = msg.rc
-
-		// Docker logs may be multiplexed; demux into a plain text stream for scanning.
-		pr, pw := io.Pipe()
-		go func() {
-			defer func() { _ = pw.Close() }()
-			_, err := stdcopy.StdCopy(pw, pw, msg.rc)
-			if err != nil {
-				_ = pw.CloseWithError(err)
-			}
-		}()
-
-		sc := bufio.NewScanner(pr)
-		// allow reasonably long log lines
-		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-		p.sc = sc
-
-		return p, readNextLogLineCmd(p.sc)
+		p.ch = msg.ch
+		return p, waitNextLogEventCmd(p.ch)
 
 	case logsFollowFailedMsg:
 		p.loading = false
 		p.lines = nil
 		return p, openDialogCmd(dialogError, "Logs", msg.err.Error())
 
-	case logsLineMsg:
+	case logsEventReceivedMsg:
+		if !msg.ok {
+			// channel closed -> follow ended normally
+			return p, nil
+		}
+		if msg.ev.Err != nil {
+			return p, openDialogCmd(dialogError, "Logs", msg.ev.Err.Error())
+		}
+		if msg.ev.Done {
+			// follow ends when container stops, page closes, or ctx is canceled
+			return p, nil
+		}
 		const maxLines = 5000
-		p.lines = append(p.lines, msg.line)
+		p.lines = append(p.lines, msg.ev.Line)
 		if len(p.lines) > maxLines {
 			over := len(p.lines) - maxLines
 			p.lines = p.lines[over:]
 		}
 
 		p.refreshViewportContent(true, p.pinned)
-		return p, readNextLogLineCmd(p.sc)
-
-	case logsFollowStoppedMsg:
-		// follow ends when container stops, page closes, or an error happend
-		if msg.err != nil {
-			return p, openDialogCmd(dialogError, "Logs", msg.err.Error())
-		}
-
+		return p, waitNextLogEventCmd(p.ch)
 	}
 
 	return p, nil
@@ -235,13 +219,9 @@ func (p *logsPage) refreshViewportContent(keepOffset bool, gotoBottom bool) {
 func (p logsPage) Close() tea.Cmd {
 	// capture at call time
 	cancel := p.cancel
-	rc := p.rc
 	return func() tea.Msg {
 		if cancel != nil {
 			cancel()
-		}
-		if rc != nil {
-			_ = rc.Close()
 		}
 		return nil
 	}
