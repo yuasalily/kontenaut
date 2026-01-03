@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,13 +14,14 @@ import (
 )
 
 const logsMaxLines = 5000
+const logsRebuildInterval = 100 * time.Millisecond
 
 // logRing is a fixed-size ring buffer specialized for log lines.
 // It keeps the last N lines in chronological order (oldest -> newest)
 type logRing struct {
 	buf   []string
 	start int // index of the oldest element
-	size  int // number of valid elemnts (<= len(buf))
+	size  int // number of valid elements (<= len(buf))
 }
 
 func newLogRing(capacity int) logRing {
@@ -45,7 +47,7 @@ func (r *logRing) Push(line string) {
 		return
 	}
 
-	// full :overwite oldest and advance start
+	// full :overwrite oldest and advance start
 	r.buf[r.start] = line
 	r.start = (r.start + 1) % len(r.buf)
 }
@@ -71,6 +73,7 @@ type logsPage struct {
 
 	loading bool
 	ring    logRing
+	dirty   bool // content needs rebuild
 
 	width  int
 	height int
@@ -110,6 +113,8 @@ type logsEventReceivedMsg struct {
 	ok bool
 }
 
+type logsTickMsg struct{}
+
 func startFollowLogsCmd(containerUC *usecase.ContainerUsecase, containerID string, tail int) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -132,8 +137,14 @@ func waitNextLogEventCmd(ch <-chan usecase.LogEvent) tea.Cmd {
 	}
 }
 
+func logsTickCmd() tea.Cmd {
+	return tea.Tick(logsRebuildInterval, func(time.Time) tea.Msg {
+		return logsTickMsg{}
+	})
+}
+
 func (p logsPage) Init() tea.Cmd {
-	return startFollowLogsCmd(p.containerUC, p.containerID, 200)
+	return tea.Batch(startFollowLogsCmd(p.containerUC, p.containerID, 200), logsTickCmd())
 }
 
 func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
@@ -141,9 +152,10 @@ func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		p.width, p.height = msg.Width, msg.Height
 		p = p.applyViewportLayout()
-		gotoBottom := !p.loading && p.pinned
-		keepOffset := !gotoBottom
-		p.refreshViewportContent(keepOffset, gotoBottom)
+		if !p.loading {
+			// Resize is rare; rebuild immediately so wrapping reflects the new width
+			p.rebuildViewportContent(p.pinned)
+		}
 		return p, nil
 
 	case tea.KeyMsg:
@@ -191,9 +203,15 @@ func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			return p, nil
 		}
 		p.ring.Push(msg.ev.Line)
-
-		p.refreshViewportContent(true, p.pinned)
+		p.dirty = true
 		return p, waitNextLogEventCmd(p.ch)
+
+	case logsTickMsg:
+		if !p.loading && p.dirty {
+			p.rebuildViewportContent(p.pinned)
+			p.dirty = false
+		}
+		return p, logsTickCmd()
 	}
 
 	return p, nil
@@ -258,16 +276,22 @@ func wrapLogLines(lines []string, width int) []string {
 	for _, line := range lines {
 		// Preserve leading spaces (e.g. stack traces, indented logs)
 		wrapped := ansi.Hardwrap(line, width, true)
-		//Hardwrap may return a block containing '\n'.
+		// Hardwrap may return a block containing '\n'.
 		parts := strings.Split(wrapped, "\n")
 		out = append(out, parts...)
 	}
 	return out
 }
 
-func (p *logsPage) refreshViewportContent(keepOffset bool, gotoBottom bool) {
+func (p *logsPage) rebuildViewportContent(gotoBottom bool) {
 	if p.loading || p.vp.Width <= 0 || p.vp.Height <= 0 {
 		return
+	}
+
+	keepOffset := !gotoBottom
+	var prevY int
+	if keepOffset {
+		prevY = p.vp.YOffset
 	}
 
 	lines := p.ring.Slice()
@@ -280,14 +304,7 @@ func (p *logsPage) refreshViewportContent(keepOffset bool, gotoBottom bool) {
 		return
 	}
 
-	var prevY int
-	if keepOffset {
-		prevY = p.vp.YOffset
-	}
-
-	if keepOffset {
-		p.vp.SetYOffset(prevY)
-	}
+	p.vp.SetYOffset(prevY)
 }
 
 func (p logsPage) Close() tea.Cmd {
