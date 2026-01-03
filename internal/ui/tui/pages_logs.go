@@ -11,6 +11,57 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
+const logsMaxLines = 5000
+
+// logRing is a fixed-size ring buffer specialized for log lines.
+// It keeps the last N lines in chronological order (oldest -> newest)
+type logRing struct {
+	buf   []string
+	start int // index of the oldest element
+	size  int // number of valid elemnts (<= len(buf))
+}
+
+func newLogRing(capacity int) logRing {
+	if capacity < 0 {
+		capacity = 0
+	}
+	return logRing{buf: make([]string, capacity)}
+}
+
+func (r *logRing) Cap() int { return len(r.buf) }
+func (r *logRing) Len() int { return r.size }
+
+func (r *logRing) Push(line string) {
+	if len(r.buf) == 0 {
+		return
+	}
+
+	if r.size < len(r.buf) {
+		// append at logical end
+		idx := (r.start + r.size) % len(r.buf)
+		r.buf[idx] = line
+		r.size++
+		return
+	}
+
+	// full :overwite oldest and advance start
+	r.buf[r.start] = line
+	r.start = (r.start + 1) % len(r.buf)
+}
+
+// Slice returns a newly allocated slice of lines in chronological order.
+func (r *logRing) Slice() []string {
+	if r.size == 0 {
+		return nil
+	}
+	out := make([]string, r.size)
+	for i := 0; i < r.size; i++ {
+		idx := (r.start + i) % len(r.buf)
+		out[i] = r.buf[idx]
+	}
+	return out
+}
+
 type logsPage struct {
 	containerUC *usecase.ContainerUsecase
 
@@ -18,7 +69,7 @@ type logsPage struct {
 	containerName string
 
 	loading bool
-	lines   []string
+	ring    logRing
 
 	width  int
 	height int
@@ -41,7 +92,7 @@ func newLogsPage(containerUC *usecase.ContainerUsecase, containerID, containerNa
 		containerID:   containerID,
 		containerName: containerName,
 		loading:       true,
-		lines:         nil,
+		ring:          newLogRing(logsMaxLines),
 		vp:            viewport.New(0, 0),
 		pinned:        true,
 	}
@@ -122,7 +173,6 @@ func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 
 	case logsFollowFailedMsg:
 		p.loading = false
-		p.lines = nil
 		return p, openDialogCmd(dialogError, "Logs", msg.err.Error())
 
 	case logsEventReceivedMsg:
@@ -137,12 +187,7 @@ func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			// follow ends when container stops, page closes, or ctx is canceled
 			return p, nil
 		}
-		const maxLines = 5000
-		p.lines = append(p.lines, msg.ev.Line)
-		if len(p.lines) > maxLines {
-			over := len(p.lines) - maxLines
-			p.lines = p.lines[over:]
-		}
+		p.ring.Push(msg.ev.Line)
 
 		p.refreshViewportContent(true, p.pinned)
 		return p, waitNextLogEventCmd(p.ch)
@@ -177,7 +222,7 @@ func (p logsPage) bodyView() string {
 	if p.loading {
 		return "Loading..."
 	}
-	if len(p.lines) == 0 {
+	if p.ring.Len() == 0 {
 		return "<no logs>"
 	}
 	return p.vp.View()
@@ -198,7 +243,7 @@ func (p *logsPage) refreshViewportContent(keepOffset bool, gotoBottom bool) {
 		return
 	}
 
-	content := strings.Join(p.lines, "\n")
+	content := strings.Join(p.ring.Slice(), "\n")
 	p.vp.SetContent(content)
 
 	if gotoBottom {
