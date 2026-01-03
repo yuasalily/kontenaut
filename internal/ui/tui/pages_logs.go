@@ -34,9 +34,11 @@ func newLogRing(capacity int) logRing {
 func (r *logRing) Cap() int { return len(r.buf) }
 func (r *logRing) Len() int { return r.size }
 
-func (r *logRing) Push(line string) {
+// Push adds a line to the ring.
+// If the ring is full, it overwrites the oldest line and returns it as evicted=true.
+func (r *logRing) Push(line string) (evictedLine string, evicted bool) {
 	if len(r.buf) == 0 {
-		return
+		return "", false
 	}
 
 	if r.size < len(r.buf) {
@@ -44,12 +46,14 @@ func (r *logRing) Push(line string) {
 		idx := (r.start + r.size) % len(r.buf)
 		r.buf[idx] = line
 		r.size++
-		return
+		return "", false
 	}
 
 	// full :overwrite oldest and advance start
+	oldest := r.buf[r.start]
 	r.buf[r.start] = line
 	r.start = (r.start + 1) % len(r.buf)
+	return oldest, true
 }
 
 // Slice returns a newly allocated slice of lines in chronological order.
@@ -74,6 +78,11 @@ type logsPage struct {
 	loading bool
 	ring    logRing
 	dirty   bool // content needs rebuild
+
+	// pendingYOffsetDelta accumulates YOffset adjustments while pinned=false.
+	// It compensates for ring eviction so the viewport keeps showing the same log content (freeze semantics).
+	// Applied on the next rebuild tick.
+	pendingYOffsetDelta int
 
 	width  int
 	height int
@@ -154,6 +163,7 @@ func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p = p.applyViewportLayout()
 		if !p.loading {
 			// Resize is rare; rebuild immediately so wrapping reflects the new width
+			p.pendingYOffsetDelta = 0
 			p.rebuildViewportContent(p.pinned)
 		}
 		return p, nil
@@ -202,7 +212,15 @@ func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			// follow ends when container stops, page closes, or ctx is canceled
 			return p, nil
 		}
-		p.ring.Push(msg.ev.Line)
+		evictedLine, evicted := p.ring.Push(msg.ev.Line)
+		// Freeze smentics:
+		// When pinned=false, keep showing the same content even if the ring evicts from the top.
+		// Compensate YOffset by the number of wrapped display-lines removed from the head.
+		if evicted && !p.pinned {
+			pending := wrappedLineCount(evictedLine, p.vp.Width)
+			p.pendingYOffsetDelta -= pending
+		}
+
 		p.dirty = true
 		return p, waitNextLogEventCmd(p.ch)
 
@@ -283,6 +301,24 @@ func wrapLogLines(lines []string, width int) []string {
 	return out
 }
 
+// wrappedLineCount returns how many viewport "display lines" a single log line occupies after wrapping.
+// It mirrors wrapLogLines for a single line, but returns count only.
+func wrappedLineCount(line string, width int) int {
+	// If viewport width is not ready, fall back to 1.
+	if width <= 0 {
+		return 1
+	}
+	if width < 1 {
+		width = 1
+	}
+	wrapped := ansi.Hardwrap(line, width, true)
+	// Hardwrap may contain '\n'. Count segments.
+	if wrapped == "" {
+		return 1
+	}
+	return strings.Count(wrapped, "\n") + 1
+}
+
 func (p *logsPage) rebuildViewportContent(gotoBottom bool) {
 	if p.loading || p.vp.Width <= 0 || p.vp.Height <= 0 {
 		return
@@ -291,8 +327,11 @@ func (p *logsPage) rebuildViewportContent(gotoBottom bool) {
 	keepOffset := !gotoBottom
 	var prevY int
 	if keepOffset {
-		prevY = p.vp.YOffset
+		prevY = max(p.vp.YOffset + p.pendingYOffsetDelta, 0)
 	}
+
+	// delta is applied (or discarded) on rebuild.
+	p.pendingYOffsetDelta = 0
 
 	lines := p.ring.Slice()
 	viewLines := wrapLogLines(lines, p.vp.Width)
