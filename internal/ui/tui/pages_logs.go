@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
@@ -140,7 +141,9 @@ func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		p.width, p.height = msg.Width, msg.Height
 		p = p.applyViewportLayout()
-		p.refreshViewportContent(true, false)
+		gotoBottom := !p.loading && p.pinned
+		keepOffset := !gotoBottom
+		p.refreshViewportContent(keepOffset, gotoBottom)
 		return p, nil
 
 	case tea.KeyMsg:
@@ -238,12 +241,38 @@ func (p logsPage) applyViewportLayout() logsPage {
 	return p
 }
 
+func wrapLogLines(lines []string, width int) []string {
+	if len(lines) == 0 {
+		return nil
+	}
+
+	// NOTE: width is terminal cell width; ansi.Hardwrap is ANSI-aware and wide-char aware.
+	if width <= 0 {
+		return lines
+	}
+	if width < 1 {
+		width = 1
+	}
+
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		// Preserve leading spaces (e.g. stack traces, indented logs)
+		wrapped := ansi.Hardwrap(line, width, true)
+		//Hardwrap may return a block containing '\n'.
+		parts := strings.Split(wrapped, "\n")
+		out = append(out, parts...)
+	}
+	return out
+}
+
 func (p *logsPage) refreshViewportContent(keepOffset bool, gotoBottom bool) {
 	if p.loading || p.vp.Width <= 0 || p.vp.Height <= 0 {
 		return
 	}
 
-	content := strings.Join(p.ring.Slice(), "\n")
+	lines := p.ring.Slice()
+	viewLines := wrapLogLines(lines, p.vp.Width)
+	content := strings.Join(viewLines, "\n")
 	p.vp.SetContent(content)
 
 	if gotoBottom {
