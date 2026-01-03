@@ -19,7 +19,7 @@ const logsMaxLines = 5000
 type logRing struct {
 	buf   []string
 	start int // index of the oldest element
-	size  int // number of valid elememnts (<= len(buf))
+	size  int // number of valid elements (<= len(buf))
 }
 
 func newLogRing(capacity int) logRing {
