@@ -83,7 +83,7 @@ docker run -d \
     while true; do
       echo \"[LOG] tick looooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong \$i\";
       i=\$((i+1));
-      sleep 2;
+      sleep 0.005;
     done
   "
 
