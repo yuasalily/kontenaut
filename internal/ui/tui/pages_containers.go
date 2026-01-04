@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -10,16 +11,24 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
+const confirmDeleteContainers ConfirmID = "containers:delete"
+
 type containersPage struct {
 	containerUC *usecase.ContainerUsecase
 
 	loading    bool
+	deleting   bool
 	containers []engine.ContainerSummary
 
 	width  int
 	height int
 
 	containersTable table.Model
+
+	selected map[string]struct{}
+	locked   map[string]struct{}
+
+	pendingDeleteIDs []string
 }
 
 // compile-time interface check
@@ -30,6 +39,37 @@ func newContainersPage(containerUC *usecase.ContainerUsecase) Page {
 		containerUC:     containerUC,
 		loading:         true,
 		containersTable: newContainersTable(),
+		selected:        map[string]struct{}{},
+		locked:          map[string]struct{}{},
+	}
+}
+
+type containersDeletedMsg struct {
+	deleted  int
+	failed   int
+	firstErr error
+}
+
+func deleteContainersCmd(containerUC *usecase.ContainerUsecase, ids []string) tea.Cmd {
+	return func() tea.Msg {
+		deleted := 0
+		failed := 0
+		var firstErr error
+		for _, id := range ids {
+			if err := containerUC.Delete(context.Background(), id); err != nil {
+				failed++
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			deleted++
+		}
+		return containersDeletedMsg{
+			deleted:  deleted,
+			failed:   failed,
+			firstErr: firstErr,
+		}
 	}
 }
 
@@ -59,16 +99,70 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 
 	case containersLoadedMsg:
 		p.loading = false
+		p.deleting = false
 		p.containers = []engine.ContainerSummary(msg)
-		p.containersTable.SetRows(rowsFromContainerSummaries(p.containers, p.containersTable.Columns()))
+		p.locked = lockedContainerIDs(p.containers)
+		p.containersTable.SetRows(rowsFromContainerSummaries(p.containers, p.containersTable.Columns(), p.selected, p.locked))
+		return p, nil
 
 	case containersLoadFailedMsg:
 		p.loading = false
+		p.deleting = false
 		return p, openDialogCmd(dialogError, "Containers", msg.err.Error())
+
+	case confirmDialogResolvedMsg:
+		if msg.id != confirmDeleteContainers {
+			return p, nil
+		}
+		ids := p.pendingDeleteIDs
+		p.pendingDeleteIDs = nil
+		if !msg.ok || len(ids) == 0 {
+			return p, nil
+		}
+		p.deleting = true
+		return p, deleteContainersCmd(p.containerUC, ids)
+
+	case containersDeletedMsg:
+		p.deleting = false
+		p.loading = true
+		p.selected = map[string]struct{}{}
+
+		var dlt tea.Cmd
+		if msg.failed == 0 {
+			dlt = openDialogCmd(dialogInfo, "Containers", fmt.Sprintf("Deleted %d container(s)", msg.deleted))
+		} else {
+			body := fmt.Sprintf("Deleted %d container(s). Failed %d container(s).", msg.deleted, msg.failed)
+			if msg.firstErr != nil {
+				body = fmt.Sprintf("%s\n\n%s", body, msg.firstErr.Error())
+			}
+			dlt = openDialogCmd(dialogError, "Containers", body)
+		}
+		return p, tea.Sequence(listContainersCmd(p.containerUC), dlt)
 	}
 
-	if km, ok := msg.(tea.KeyMsg); ok && !p.loading {
+	if km, ok := msg.(tea.KeyMsg); ok && !p.loading && !p.deleting {
 		switch km.String() {
+		case " ", "space":
+			id, ok := p.cursorContainerID()
+			if !ok {
+				return p, nil
+			}
+			if p.isLocked(id) {
+				return p, nil
+			}
+			p.toggleSelected(id)
+			p.containersTable.SetRows(rowsFromContainerSummaries(p.containers, p.containersTable.Columns(), p.selected, p.locked))
+			return p, nil
+
+		case "d":
+			ids := p.selectedDeletableIDs()
+			if len(ids) == 0 {
+				return p, openDialogCmd(dialogInfo, "Containers", "No containersselected")
+			}
+			p.pendingDeleteIDs = ids
+			body := fmt.Sprintf("Delete %d container(s)?", len(ids))
+			return p, openConfirmDialogCmd(confirmDeleteContainers, "Containers", body)
+
 		case "enter":
 			c, ok := p.cursorContainer()
 			if !ok {
@@ -93,12 +187,15 @@ func (p containersPage) View() string {
 	if p.loading {
 		return "Loading..."
 	}
+	if p.deleting {
+		return "Deleting..."
+	}
 
 	var b strings.Builder
 	b.WriteString("Containers\n")
 	b.WriteString(p.containersTable.View())
 
-	b.WriteString("\n(q to quit)\n")
+	b.WriteString("\n(space: select, d: delete, enter: logs, q to quit)\n")
 	return b.String()
 }
 
@@ -114,7 +211,7 @@ func (p containersPage) applyTableLayout() containersPage {
 	cols := columnsForContainersWidth(p.width)
 	p.containersTable.SetColumns(cols)
 	if len(p.containers) > 0 {
-		p.containersTable.SetRows(rowsFromContainerSummaries(p.containers, cols))
+		p.containersTable.SetRows(rowsFromContainerSummaries(p.containers, cols, p.selected, p.locked))
 	}
 	return p
 }
@@ -131,6 +228,7 @@ func newContainersTable() table.Model {
 
 func columnsForContainersWidth(total int) []table.Column {
 	const (
+		selW    = 4
 		idW     = 12
 		imageW  = 20
 		statusW = 18
@@ -138,13 +236,14 @@ func columnsForContainersWidth(total int) []table.Column {
 
 	nameW := 20
 	if total > 0 {
-		rest := total - (idW + imageW + statusW) - 6
+		rest := total - (selW + idW + imageW + statusW) - 8
 		if rest > nameW {
 			nameW = rest
 		}
 	}
 
 	return []table.Column{
+		{Title: "SEL", Width: selW},
 		{Title: "ID", Width: idW},
 		{Title: "IMAGE", Width: imageW},
 		{Title: "STATUS", Width: statusW},
@@ -152,7 +251,7 @@ func columnsForContainersWidth(total int) []table.Column {
 	}
 }
 
-func rowsFromContainerSummaries(items []engine.ContainerSummary, cols []table.Column) []table.Row {
+func rowsFromContainerSummaries(items []engine.ContainerSummary, cols []table.Column, selected map[string]struct{}, locked map[string]struct{}) []table.Row {
 	getW := func(i int, fallback int) int {
 		if i < 0 || i >= len(cols) {
 			return fallback
@@ -160,14 +259,22 @@ func rowsFromContainerSummaries(items []engine.ContainerSummary, cols []table.Co
 		return cols[i].Width
 	}
 
-	idW := getW(0, 12)
-	imageW := getW(1, 20)
-	statusW := getW(2, 18)
-	nameW := getW(3, 20)
+	selW := getW(0, 4)
+	idW := getW(1, 12)
+	imageW := getW(2, 20)
+	statusW := getW(3, 18)
+	nameW := getW(4, 20)
 
 	out := make([]table.Row, 0, len(items))
 	for _, c := range items {
+		sel := "[ ]"
+		if _, ok := locked[c.ID]; ok {
+			sel = "[#]"
+		} else if _, ok := selected[c.ID]; ok {
+			sel = "[x]"
+		}
 		out = append(out, table.Row{
+			truncContainer(sel, selW),
 			truncContainer(c.ID, idW),
 			truncContainer(c.Image, imageW),
 			truncContainer(c.Status, statusW),
@@ -186,6 +293,55 @@ func (p containersPage) cursorContainer() (engine.ContainerSummary, bool) {
 		return engine.ContainerSummary{}, false
 	}
 	return p.containers[i], true
+}
+
+func (p containersPage) cursorContainerID() (string, bool) {
+	c, ok := p.cursorContainer()
+	if !ok {
+		return "", false
+	}
+	return c.ID, true
+}
+
+func lockedContainerIDs(items []engine.ContainerSummary) map[string]struct{} {
+	out := make(map[string]struct{}, len(items))
+	for _, c := range items {
+		if isContainerRunning(c.Status) {
+			out[c.ID] = struct{}{}
+		}
+	}
+	return out
+}
+
+func isContainerRunning(status string) bool {
+	// Docker "Status" is a human readable string like:
+	// "Up 5 minutes", "Exited (0) 2 hours ago", ...
+	// We treat "Up ..." as running
+	return strings.HasPrefix(status, "Up")
+}
+
+func (p containersPage) isLocked(id string) bool {
+	_, ok := p.locked[id]
+	return ok
+}
+
+func (p *containersPage) toggleSelected(id string) {
+	if _, ok := p.selected[id]; ok {
+		delete(p.selected, id)
+		return
+	}
+	p.selected[id] = struct{}{}
+}
+
+func (p containersPage) selectedDeletableIDs() []string {
+	out := make([]string, 0, len(p.selected))
+	for id := range p.selected {
+		if _, ok := p.locked[id]; ok {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
 }
 
 func truncContainer(s string, w int) string {
