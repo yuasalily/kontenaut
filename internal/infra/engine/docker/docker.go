@@ -133,6 +133,15 @@ func (d *DockerEngine) RemoveImage(ctx context.Context, imageID string) error {
 	return err
 }
 
+func (d *DockerEngine) RemoveContainer(ctx context.Context, containerID string, force bool) error {
+	_, err := d.cli.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{
+		Force:         force,
+		RemoveVolumes: false,
+		RemoveLinks:   false,
+	})
+	return err
+}
+
 func (d *DockerEngine) ContainerLogs(ctx context.Context, containerID string, tail int) ([]string, error) {
 	if tail <= 0 {
 		tail = 200

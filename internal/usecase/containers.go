@@ -21,6 +21,10 @@ func (u *ContainerUsecase) List(ctx context.Context) ([]engine.ContainerSummary,
 	return u.eng.ListContainers(ctx)
 }
 
+func (u *ContainerUsecase) Delete(ctx context.Context, containerID string) error {
+	return u.eng.RemoveContainer(ctx, containerID, false)
+}
+
 // Logs returns a snapshot of container logs (non-follow).
 //
 // NOTE:
