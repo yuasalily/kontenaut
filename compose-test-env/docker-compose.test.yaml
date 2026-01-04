@@ -1,0 +1,27 @@
+version: "3.9"
+
+name: test_kontenaut_compose
+
+services:
+  test_app:
+    image: alpine
+    labels:
+      purpose: test
+      suite: docker-sdk-wrapper
+    command: >
+      sh -c "while true; do
+        echo '[TEST][COMPOSE][app] running';
+        sleep 3;
+      done"
+
+  test_worker:
+    image: alpine
+    labels:
+      purpose: test
+      suite: docker-sdk-wrapper
+    command: >
+      sh -c "
+        echo '[TEST][COMPOSE][worker] start';
+        sleep 5;
+        echo '[TEST][COMPOSE][worker] end';
+      "

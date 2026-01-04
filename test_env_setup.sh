@@ -2,113 +2,121 @@
 set -eu
 
 PREFIX="wrapper-test"
+COMPOSE_DIR="./compose-test-env"
+COMPOSE_FILE="docker-compose.test.yaml"
+COMPOSE_PROJECT="test_kontenaut_compose"
 
 echo "=== GLOBAL CLEANUP (ALL containers & images) ==="
 
-# すべてのコンテナ削除
 docker ps -aq | xargs -r docker rm -f
-
-# すべてのイメージ削除
 docker images -aq | xargs -r docker rmi -f
+docker network prune -f
 
-echo "=== Create images (no Dockerfile) ==="
+echo "=== Create standalone images (no Dockerfile) ==="
 
-# ---- deletable images (4) ----
 i=1
-while [ $i -le 4 ]; do
+while [ $i -le 3 ]; do
   docker run -d \
-    --name "${PREFIX}-tmp-img-deletable-$i" \
-    alpine sh -c "echo image-deletable-$i > /file && sleep 2"
+    --name "${PREFIX}-tmp-img-$i" \
+    alpine sh -c "echo image-$i > /file && sleep 2"
 
   docker commit \
-    "${PREFIX}-tmp-img-deletable-$i" \
+    "${PREFIX}-tmp-img-$i" \
     "${PREFIX}-image-deletable-$i"
 
-  docker rm -f "${PREFIX}-tmp-img-deletable-$i"
+  docker rm -f "${PREFIX}-tmp-img-$i"
   i=$((i + 1))
 done
 
-# ---- non-deletable image (in use) ----
-docker run -d \
-  --name "${PREFIX}-tmp-img-nondeletable" \
-  alpine sh -c "echo image-nondeletable > /file && sleep 2"
+echo "=== Create standalone containers ==="
 
-docker commit \
-  "${PREFIX}-tmp-img-nondeletable" \
-  "${PREFIX}-image-nondeletable"
-
-docker rm -f "${PREFIX}-tmp-img-nondeletable"
-
-echo "=== Create containers (deletable / non-deletable) ==="
-
-# ---- deletable containers (stopped, 5) ----
 i=1
-while [ $i -le 5 ]; do
+while [ $i -le 3 ]; do
   docker create \
     --name "${PREFIX}-container-deletable-$i" \
     "${PREFIX}-image-deletable-1"
   i=$((i + 1))
 done
 
-# ---- non-deletable containers (running, 2) ----
 docker run -d \
   --name "${PREFIX}-container-nondeletable-1" \
   "${PREFIX}-image-deletable-1" sh -c "sleep 600"
 
-docker run -d \
-  --name "${PREFIX}-container-nondeletable-2" \
-  "${PREFIX}-image-deletable-1" sh -c "sleep 600"
+echo "=== Create containers with logs ==="
 
-# ---- container that blocks image deletion ----
-docker create \
-  --name "${PREFIX}-container-uses-image-nondeletable" \
-  "${PREFIX}-image-nondeletable"
-
-echo "=== Create log-retaining containers ==="
-
-# ---- stopped but logs remain ----
 docker run \
   --name "${PREFIX}-container-with-logs-stopped" \
   alpine sh -c "
-    echo '[INFO] start';
-    echo '[DEBUG] doing something';
-    echo '[INFO] finished';
+    echo '[TEST][STANDALONE] start';
+    echo '[TEST][STANDALONE] end';
   "
 
-# ---- running with continuous logs ----
 docker run -d \
   --name "${PREFIX}-container-with-logs-running" \
   alpine sh -c "
     i=1;
     while true; do
-      LEN=\$(( (RANDOM % 200) + 20 ));
-      STR=\$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c \$LEN);
-      echo \"[LOG] tick \$STR \$i\";
+      echo \"[TEST][STANDALONE] tick \$i\";
       i=\$((i+1));
-      sleep 1;
+      sleep 2;
     done
   "
 
+echo "=== Create TEST docker-compose environment ==="
+
+rm -rf "${COMPOSE_DIR}"
+mkdir -p "${COMPOSE_DIR}"
+
+cat > "${COMPOSE_DIR}/${COMPOSE_FILE}" <<EOF
+version: "3.9"
+
+name: ${COMPOSE_PROJECT}
+
+services:
+  test_app:
+    image: alpine
+    labels:
+      purpose: test
+      suite: docker-sdk-wrapper
+    command: >
+      sh -c "while true; do
+        echo '[TEST][COMPOSE][app] running';
+        sleep 3;
+      done"
+
+  test_worker:
+    image: alpine
+    labels:
+      purpose: test
+      suite: docker-sdk-wrapper
+    command: >
+      sh -c "
+        echo '[TEST][COMPOSE][worker] start';
+        sleep 5;
+        echo '[TEST][COMPOSE][worker] end';
+      "
+EOF
+
+(
+  cd "${COMPOSE_DIR}"
+  docker compose -f "${COMPOSE_FILE}" up -d
+)
+
 echo
-echo "=== Delete & Log Test Summary ==="
+echo "=== TEST Environment Summary ==="
 echo
-echo "Containers (deletable, batch OK):"
-echo "  ${PREFIX}-container-deletable-1..5"
+echo "[Standalone]"
+echo "  Containers : ${PREFIX}-container-*"
+echo "  Images     : ${PREFIX}-image-*"
 echo
-echo "Containers (non-deletable without -f):"
-echo "  ${PREFIX}-container-nondeletable-1"
-echo "  ${PREFIX}-container-nondeletable-2"
-echo
-echo "Containers (log test):"
-echo "  ${PREFIX}-container-with-logs-stopped  (docker logs OK)"
-echo "  ${PREFIX}-container-with-logs-running  (docker logs -f OK)"
-echo
-echo "Images (deletable, batch OK):"
-echo "  ${PREFIX}-image-deletable-1..4"
-echo
-echo "Image (non-deletable):"
-echo "  ${PREFIX}-image-nondeletable"
+echo "[Compose TEST]"
+echo "  Project    : ${COMPOSE_PROJECT}"
+echo "  File       : ${COMPOSE_DIR}/${COMPOSE_FILE}"
+echo "  Containers : ${COMPOSE_PROJECT}-test_app-1"
+echo "               ${COMPOSE_PROJECT}-test_worker-1"
+echo "  Network    : ${COMPOSE_PROJECT}_default"
 echo
 echo "=== Current state ==="
-docker ps -a | grep "${PREFIX}"
-docker images | grep "${PREFIX}"
+docker ps -a
+docker images
+docker network ls
