@@ -116,6 +116,7 @@ func (d *DockerEngine) ListContainers(ctx context.Context) ([]engine.ContainerSu
 		out = append(out, engine.ContainerSummary{
 			ID:      c.ID,
 			Name:    name,
+			State:   string(c.State),
 			Status:  c.Status,
 			Image:   c.Image,
 			ImageID: c.ImageID,

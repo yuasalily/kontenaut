@@ -15,6 +15,7 @@ type ImageSummary struct {
 type ContainerSummary struct {
 	ID      string
 	Name    string
+	State   string // machine-readable state (e.g. "running", "exited")
 	Status  string
 	Image   string
 	ImageID string
