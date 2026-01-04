@@ -85,7 +85,7 @@ docker run -d \
       STR=\$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c \$LEN);
       echo \"[LOG] tick \$STR \$i\";
       i=\$((i+1));
-      sleep 0.05;
+      sleep 1;
     done
   "
 
