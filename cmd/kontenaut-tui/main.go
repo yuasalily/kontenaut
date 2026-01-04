@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -10,7 +11,26 @@ import (
 )
 
 func main() {
-	eng, err := docker.New()
+	var endpoint string
+	flag.StringVar(
+		&endpoint,
+		"endpoint",
+		"",
+		"Docker Engine API endpoint (e.g. unix:///var/run/docker.sock, tcp://123.0.0.1:2375, ssh://user@host). "+
+			"If empty, DOCKER_HOST/DOCKER_* env vars are used.",
+	)
+	flag.Parse()
+
+	var (
+		eng *docker.DockerEngine
+		err error
+	)
+	if endpoint == "" {
+		eng, err = docker.New()
+	} else {
+		eng, err = docker.NewWithEndpoint(endpoint)
+	}
+
 	if err != nil {
 		log.Fatal(err)
 	}

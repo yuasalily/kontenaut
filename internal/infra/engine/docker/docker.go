@@ -29,6 +29,21 @@ func New() (*DockerEngine, error) {
 	return &DockerEngine{cli: cli}, nil
 }
 
+// NewWithEndpoint creates a docker client with an explicit endpoint.
+//
+// It still applies client.FromEnv so TLS-related settings can be picked up from env vars,
+// then overrides the host with the provided endpoint.
+func NewWithEndpoint(endpoint string) (*DockerEngine, error) {
+	cli, err := client.New(
+		client.FromEnv,
+		client.WithHost(endpoint),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &DockerEngine{cli: cli}, nil
+}
+
 func (d *DockerEngine) Close() error {
 	return d.cli.Close()
 }
