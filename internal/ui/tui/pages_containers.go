@@ -306,18 +306,18 @@ func (p containersPage) cursorContainerID() (string, bool) {
 func lockedContainerIDs(items []engine.ContainerSummary) map[string]struct{} {
 	out := make(map[string]struct{}, len(items))
 	for _, c := range items {
-		if isContainerRunning(c.Status) {
+		if isContainerRunning(c.State) {
 			out[c.ID] = struct{}{}
 		}
 	}
 	return out
 }
 
-func isContainerRunning(status string) bool {
-	// Docker "Status" is a human readable string like:
-	// "Up 5 minutes", "Exited (0) 2 hours ago", ...
-	// We treat "Up ..." as running
-	return strings.HasPrefix(status, "Up")
+func isContainerRunning(state string) bool {
+	// Docker "State" is a machine-readable string like:
+	// "running", "exited", ...
+	// We treat "running" as locked (not deletable without -f)
+	return state == "running"
 }
 
 func (p containersPage) isLocked(id string) bool {
