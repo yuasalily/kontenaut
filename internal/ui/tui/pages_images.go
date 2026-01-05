@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yuasalily/kontenaut/internal/infra/engine"
@@ -30,6 +31,8 @@ type imagesPage struct {
 	locked   map[string]struct{}
 
 	pendingDeleteIDs []string
+
+	km imagesKeyMap
 }
 
 // compile-time interface check
@@ -42,6 +45,7 @@ func newImagesPage(imageUC *usecase.ImageUsecase) Page {
 		imagesTable: newImagesTable(),
 		selected:    map[string]struct{}{},
 		locked:      map[string]struct{}{},
+		km:          newImagesKeyMap(),
 	}
 }
 
@@ -115,11 +119,9 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		return p, nil
 
 	case tea.KeyMsg:
-		if msg.String() == "r" && !p.loading && !p.deleting {
-			p.loading = true
-			p.selected = map[string]struct{}{}
-			p.pendingDeleteIDs = nil
-			return p, p.Init()
+		np, cmd, handled := p.handleKey(msg)
+		if handled {
+			return np, cmd
 		}
 
 	case imagesLoadedMsg:
@@ -176,31 +178,6 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 
 	}
 
-	if km, ok := msg.(tea.KeyMsg); ok && !p.loading && !p.deleting {
-		switch km.String() {
-		case " ", "space":
-			id, ok := p.cursorImageID()
-			if !ok {
-				return p, nil
-			}
-			if p.isLocked(id) {
-				return p, nil
-			}
-			p.toggleSelected(id)
-			p.imagesTable.SetRows(rowsFromImageSummaries(p.images, p.imagesTable.Columns(), p.selected, p.locked))
-			return p, nil
-
-		case "d":
-			ids := p.selectedDeletableIDs()
-			if len(ids) == 0 {
-				return p, openDialogCmd(dialogInfo, "Images", "No images selected")
-			}
-			p.pendingDeleteIDs = ids
-			body := fmt.Sprintf("Delete %d image(s)?", len(ids))
-			return p, openConfirmDialogCmd(confirmDeleteImages, "Images", body)
-		}
-	}
-
 	var cmd tea.Cmd
 	p.imagesTable, cmd = p.imagesTable.Update(msg)
 	return p, cmd
@@ -219,6 +196,44 @@ func (p imagesPage) View() string {
 	b.WriteString(p.imagesTable.View())
 	b.WriteString("\n(space: select, d: delete, r: refresh, q: quit)\n")
 	return b.String()
+}
+
+func (p imagesPage) handleKey(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
+	if p.loading || p.deleting {
+		return p, nil, false
+	}
+
+	switch {
+	case key.Matches(msg, p.km.Refresh):
+		p.loading = true
+		p.selected = map[string]struct{}{}
+		p.locked = map[string]struct{}{}
+		p.pendingDeleteIDs = nil
+		return p, p.Init(), true
+
+	case key.Matches(msg, p.km.Select):
+		id, ok := p.cursorImageID()
+		if !ok {
+			return p, nil, true
+		}
+		if p.isLocked(id) {
+			return p, nil, true
+		}
+		p.toggleSelected(id)
+		p.imagesTable.SetRows(rowsFromImageSummaries(p.images, p.imagesTable.Columns(), p.selected, p.locked))
+		return p, nil, true
+
+	case key.Matches(msg, p.km.Delete):
+		ids := p.selectedDeletableIDs()
+		if len(ids) == 0 {
+			return p, openDialogCmd(dialogInfo, "Images", "No images selected"), true
+		}
+		p.pendingDeleteIDs = ids
+		body := fmt.Sprintf("Delete %d image(s)?", len(ids))
+		return p, openConfirmDialogCmd(confirmDeleteImages, "Images", body), true
+	}
+
+	return p, nil, false
 }
 
 func (p imagesPage) applyTableLayout() imagesPage {
