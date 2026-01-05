@@ -5,15 +5,17 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/x/ansi"
 )
 
-// renderHelp renders Key.Binding help texts in a compact one-line form.
+// renderHelpBlock renders help texts as a footer block with wrapping.
 //
-// Example output:
-//   ↑/k: up, ↓/j: down, r: refresh, q: quit
+// Output format:
+// (↑/k: up, ↓/j: down, r: refresh, q: quit)
 //
-// It uses each binding's Help() text (set by key.WithHelp) as th single source of truth.
-func renderHelp(bindings ...key.Binding) string {
+// When the content is too long, ti wraps to multiple lines via lipgloass.Wrap.
+// maxWidth is the available width in terminal cells. If maxWidth <= 0, no wrapping is applied.
+func renderHelpBlock(maxWidth int, bindings ...key.Binding) string {
 	parts := make([]string, 0, len(bindings))
 	for _, b := range bindings {
 		h := b.Help()
@@ -22,5 +24,22 @@ func renderHelp(bindings ...key.Binding) string {
 		}
 		parts = append(parts, fmt.Sprintf("%s: %s", h.Key, h.Desc))
 	}
-	return strings.Join(parts, ", ")
+	if len(parts) == 0 {
+		return ""
+	}
+
+	s := strings.Join(parts, ", ")
+
+	// Always wrap with parentheses for footer consistency.
+	if maxWidth <= 0 {
+		return "(" + s + ")"
+	}
+
+	// Reserve 2 cells for "(" and ")".
+	w := maxWidth - 2
+	if w < 1 {
+		w = 1
+	}
+	wrapped := ansi.Wrap(s, w, ",")
+	return "(" + wrapped + ")"
 }

@@ -86,9 +86,9 @@ func (p overviewPage) View() string {
 	if p.info == nil {
 		b.WriteString("Failed to connect to the Docker daemon.\n")
 		b.WriteString("Please make sure the daemon is running.\n")
-		footer := renderHelp(p.km.Refresh, p.gkm.Quit)
+		footer := renderHelpBlock(p.width, p.km.Refresh, p.gkm.Quit)
 		if footer != "" {
-			b.WriteString(fmt.Sprintf("%s\n", footer))
+			b.WriteString(footer + "\n")
 		}
 		return b.String()
 	}
@@ -97,7 +97,7 @@ func (p overviewPage) View() string {
 	b.WriteString(fmt.Sprintf("Version: %s\n", p.info.ServerVersion))
 	b.WriteString(fmt.Sprintf("OS: %s\n\n", p.info.OperatingSystem))
 
-	footer := renderHelp(p.gkm.NavOverview, p.gkm.NavImages, p.gkm.NavContainers, p.km.Refresh, p.gkm.Quit)
+	footer := renderHelpBlock(p.width, p.gkm.NavOverview, p.gkm.NavImages, p.gkm.NavContainers, p.km.Refresh, p.gkm.Quit)
 	if footer != "" {
 		b.WriteString(fmt.Sprintf("%s\n", footer))
 	}

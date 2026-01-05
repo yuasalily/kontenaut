@@ -260,11 +260,11 @@ func (p logsPage) headerView() string {
 }
 
 func (p logsPage) footerView() string {
-	footer := renderHelp(p.km.ScrollUp, p.km.Follow, p.km.Back, p.gkm.Quit)
+	footer := renderHelpBlock(p.width, p.km.ScrollUp, p.km.Follow, p.km.Back, p.gkm.Quit)
 	if footer == "" {
 		return ""
 	}
-	return fmt.Sprintf("(%s)", footer)
+	return footer
 }
 
 func (p logsPage) bodyView() string {

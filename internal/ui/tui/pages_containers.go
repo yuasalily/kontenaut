@@ -169,7 +169,8 @@ func (p containersPage) View() string {
 	b.WriteString("Containers\n")
 	b.WriteString(p.containersTable.View())
 
-	footer := renderHelp(
+	footer := renderHelpBlock(
+		p.width,
 		p.containersTable.KeyMap.LineUp,
 		p.containersTable.KeyMap.LineDown,
 		p.km.Select,
@@ -179,7 +180,7 @@ func (p containersPage) View() string {
 		p.gkm.Quit,
 	)
 	if footer != "" {
-		b.WriteString(fmt.Sprintf("\n(%s)\n", footer))
+		b.WriteString("\n" + footer + "\n")
 	}
 	return b.String()
 }

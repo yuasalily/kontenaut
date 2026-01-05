@@ -196,7 +196,8 @@ func (p imagesPage) View() string {
 	b.WriteString("Images\n")
 
 	b.WriteString(p.imagesTable.View())
-	footer := renderHelp(
+	footer := renderHelpBlock(
+		p.width,
 		p.imagesTable.KeyMap.LineUp,
 		p.imagesTable.KeyMap.LineDown,
 		p.km.Select,
@@ -205,7 +206,7 @@ func (p imagesPage) View() string {
 		p.gkm.Quit,
 	)
 	if footer != "" {
-		b.WriteString(fmt.Sprintf("\n(%s)\n", footer))
+		b.WriteString("\n" + footer + "\n")
 	}
 	return b.String()
 }
