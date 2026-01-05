@@ -114,6 +114,14 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p = p.applyTableLayout()
 		return p, nil
 
+	case tea.KeyMsg:
+		if msg.String() == "r" && !p.loading && !p.deleting {
+			p.loading = true
+			p.selected = map[string]struct{}{}
+			p.pendingDeleteIDs = nil
+			return p, p.Init()
+		}
+
 	case imagesLoadedMsg:
 		p.loading = false
 		p.images = []engine.ImageSummary(msg)
@@ -209,7 +217,7 @@ func (p imagesPage) View() string {
 	b.WriteString("Images\n")
 
 	b.WriteString(p.imagesTable.View())
-	b.WriteString("\n(space: select, d: delete, q: quit)\n")
+	b.WriteString("\n(space: select, d: delete, r: refresh, q: quit)\n")
 	return b.String()
 }
 
