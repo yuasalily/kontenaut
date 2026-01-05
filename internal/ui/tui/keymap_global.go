@@ -25,7 +25,7 @@ func newGlobalKeyMap() globalKeyMap {
 		),
 		Quit: key.NewBinding(
 			key.WithKeys("q", "ctrl+c"),
-			key.WithHelp("q/ctrl+c", "q"),
+			key.WithHelp("q/ctrl+c", "quit"),
 		),
 	}
 }
