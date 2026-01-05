@@ -110,16 +110,14 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		}
 
 	case containersLoadedMsg:
-		p.loading = false
-		p.deleting = false
+		p = p.setIdle()
 		p.containers = []engine.ContainerSummary(msg)
 		p.locked = lockedContainerIDs(p.containers)
 		p.containersTable.SetRows(rowsFromContainerSummaries(p.containers, p.containersTable.Columns(), p.selected, p.locked))
 		return p, nil
 
 	case containersLoadFailedMsg:
-		p.loading = false
-		p.deleting = false
+		p = p.setIdle()
 		return p, openDialogCmd(dialogError, "Containers", msg.err.Error())
 
 	case confirmDialogResolvedMsg:
@@ -194,6 +192,7 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 	case key.Matches(msg, p.km.Refresh):
 		p.loading = true
 		p.selected = map[string]struct{}{}
+		p.locked = map[string]struct{}{}
 		p.pendingDeleteIDs = nil
 		return p, p.Init(), true
 
@@ -378,6 +377,12 @@ func (p containersPage) selectedDeletableIDs() []string {
 		out = append(out, id)
 	}
 	return out
+}
+
+func (p containersPage) setIdle() containersPage {
+	p.loading = false
+	p.deleting = false
+	return p
 }
 
 func truncContainer(s string, w int) string {

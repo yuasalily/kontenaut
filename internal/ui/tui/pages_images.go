@@ -127,14 +127,13 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		}
 
 	case imagesLoadedMsg:
-		p.loading = false
+		p = p.setIdle()
 		p.images = []engine.ImageSummary(msg)
 		p.imagesTable.SetRows(rowsFromImageSummaries(p.images, p.imagesTable.Columns(), p.selected, p.locked))
 		return p, nil
 
 	case imagesLoadFailedMsg:
-		p.loading = false
-		p.deleting = false
+		p = p.setIdle()
 		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
 
 	case lockedImagesLoadedMsg:
@@ -382,4 +381,10 @@ func (p imagesPage) selectedDeletableIDs() []string {
 		out = append(out, id)
 	}
 	return out
+}
+
+func (p imagesPage) setIdle() imagesPage {
+	p.loading = false
+	p.deleting = false
+	return p
 }
