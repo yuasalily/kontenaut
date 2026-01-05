@@ -31,19 +31,21 @@ type containersPage struct {
 
 	pendingDeleteIDs []string
 
-	km containersKeyMap
+	gkm globalKeyMap
+	km  containersKeyMap
 }
 
 // compile-time interface check
 var _ Page = containersPage{}
 
-func newContainersPage(containerUC *usecase.ContainerUsecase) Page {
+func newContainersPage(gkm globalKeyMap, containerUC *usecase.ContainerUsecase) Page {
 	return containersPage{
 		containerUC:     containerUC,
 		loading:         true,
 		containersTable: newContainersTable(),
 		selected:        map[string]struct{}{},
 		locked:          map[string]struct{}{},
+		gkm:             gkm,
 		km:              newContainersKeyMap(),
 	}
 }
@@ -167,7 +169,18 @@ func (p containersPage) View() string {
 	b.WriteString("Containers\n")
 	b.WriteString(p.containersTable.View())
 
-	b.WriteString("\n(space: select, d: delete, enter: logs, r: refresh, q to quit)\n")
+	footer := renderHelp(
+		p.containersTable.KeyMap.LineUp,
+		p.containersTable.KeyMap.LineDown,
+		p.km.Select,
+		p.km.Delete,
+		p.km.Logs,
+		p.km.Refresh,
+		p.gkm.Quit,
+	)
+	if footer != "" {
+		b.WriteString(fmt.Sprintf("\n(%s)\n", footer))
+	}
 	return b.String()
 }
 
