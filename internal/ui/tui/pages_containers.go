@@ -102,11 +102,9 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		return p, nil
 
 	case tea.KeyMsg:
-		if msg.String() == "r" && !p.loading && !p.deleting {
-			p.loading = true
-			p.selected = map[string]struct{}{}
-			p.pendingDeleteIDs = nil
-			return p, p.Init()
+		np, cmd, handled := p.handleKey(msg)
+		if handled {
+			return np, cmd
 		}
 
 	case containersLoadedMsg:
@@ -150,44 +148,6 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			dlt = openDialogCmd(dialogError, "Containers", body)
 		}
 		return p, tea.Sequence(listContainersCmd(p.containerUC), dlt)
-	}
-
-	if km, ok := msg.(tea.KeyMsg); ok && !p.loading && !p.deleting {
-		switch km.String() {
-		case " ", "space":
-			id, ok := p.cursorContainerID()
-			if !ok {
-				return p, nil
-			}
-			if p.isLocked(id) {
-				return p, nil
-			}
-			p.toggleSelected(id)
-			p.containersTable.SetRows(rowsFromContainerSummaries(p.containers, p.containersTable.Columns(), p.selected, p.locked))
-			return p, nil
-
-		case "d":
-			ids := p.selectedDeletableIDs()
-			if len(ids) == 0 {
-				return p, openDialogCmd(dialogInfo, "Containers", "No containers selected")
-			}
-			p.pendingDeleteIDs = ids
-			body := fmt.Sprintf("Delete %d container(s)?", len(ids))
-			return p, openConfirmDialogCmd(confirmDeleteContainers, "Containers", body)
-
-		case "enter":
-			c, ok := p.cursorContainer()
-			if !ok {
-				return p, nil
-			}
-			name := c.Name
-			if name == "" {
-				name = "Unnamed"
-			}
-			return p, func() tea.Msg {
-				return openLogsMsg{id: c.ID, name: name}
-			}
-		}
 	}
 
 	var cmd tea.Cmd
