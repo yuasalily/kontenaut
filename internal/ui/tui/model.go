@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yuasalily/kontenaut/internal/usecase"
@@ -22,6 +23,7 @@ type routerModel struct {
 	height int
 
 	nav NavBar
+	km  globalKeyMap
 
 	currentPageID pageID
 	currentPage   Page
@@ -33,12 +35,14 @@ type routerModel struct {
 var _ tea.Model = routerModel{}
 
 func New(containerUC *usecase.ContainerUsecase, imageUC *usecase.ImageUsecase, daemonUC *usecase.DaemonUsecase) tea.Model {
-	p := newOverviewPage(daemonUC)
+	gkm := newGlobalKeyMap()
+	p := newOverviewPage(gkm, daemonUC)
 	return routerModel{
 		containerUC:   containerUC,
 		imageUC:       imageUC,
 		daemonUC:      daemonUC,
 		nav:           NewNavBar(pageMetas()),
+		km:            gkm,
 		currentPageID: pageOverview,
 		currentPage:   p,
 	}
@@ -79,8 +83,7 @@ func (m *routerModel) handleGlobalKeys(msg tea.Msg) (bool, tea.Cmd) {
 	if !ok {
 		return false, nil
 	}
-	switch km.String() {
-	case "q", "ctrl+c":
+	if key.Matches(km, m.km.Quit) {
 		return true, tea.Quit
 	}
 	return false, nil
@@ -157,14 +160,19 @@ func (m routerModel) closeCurrentPageCmd() tea.Cmd {
 func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if to, ok := m.nav.PageIDFromKey(msg.String()); ok {
-			return m, func() tea.Msg { return navigateMsg{to: to} }
+		switch {
+		case key.Matches(msg, m.km.NavOverview):
+			return m, func() tea.Msg { return navigateMsg{to: pageOverview} }
+		case key.Matches(msg, m.km.NavImages):
+			return m, func() tea.Msg { return navigateMsg{to: pageImages} }
+		case key.Matches(msg, m.km.NavContainers):
+			return m, func() tea.Msg { return navigateMsg{to: pageContainers} }
 		}
 
 	case openLogsMsg:
 		closeCmd := m.closeCurrentPageCmd()
 		m.currentPageID = pageContainers
-		m.currentPage = newLogsPage(m.containerUC, msg.id, msg.name)
+		m.currentPage = newLogsPage(m.km, m.containerUC, msg.id, msg.name)
 		m.applyWindowSizeToCurrentPage()
 		return m, tea.Batch(closeCmd, m.currentPage.Init())
 
@@ -175,19 +183,19 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.to {
 		case pageOverview:
 			m.currentPageID = pageOverview
-			m.currentPage = newOverviewPage(m.daemonUC)
+			m.currentPage = newOverviewPage(m.km, m.daemonUC)
 			m.applyWindowSizeToCurrentPage()
 			return m, tea.Batch(closeCmd, m.currentPage.Init())
 
 		case pageImages:
 			m.currentPageID = pageImages
-			m.currentPage = newImagesPage(m.imageUC)
+			m.currentPage = newImagesPage(m.km, m.imageUC)
 			m.applyWindowSizeToCurrentPage()
 			return m, tea.Batch(closeCmd, m.currentPage.Init())
 
 		case pageContainers:
 			m.currentPageID = pageContainers
-			m.currentPage = newContainersPage(m.containerUC)
+			m.currentPage = newContainersPage(m.km, m.containerUC)
 			m.applyWindowSizeToCurrentPage()
 			return m, tea.Batch(closeCmd, m.currentPage.Init())
 		}

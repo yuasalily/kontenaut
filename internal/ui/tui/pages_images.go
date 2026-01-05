@@ -32,19 +32,21 @@ type imagesPage struct {
 
 	pendingDeleteIDs []string
 
-	km imagesKeyMap
+	gkm globalKeyMap
+	km  imagesKeyMap
 }
 
 // compile-time interface check
 var _ Page = imagesPage{}
 
-func newImagesPage(imageUC *usecase.ImageUsecase) Page {
+func newImagesPage(gkm globalKeyMap, imageUC *usecase.ImageUsecase) Page {
 	return imagesPage{
 		imageUC:     imageUC,
 		loading:     true,
 		imagesTable: newImagesTable(),
 		selected:    map[string]struct{}{},
 		locked:      map[string]struct{}{},
+		gkm:         gkm,
 		km:          newImagesKeyMap(),
 	}
 }
@@ -194,7 +196,17 @@ func (p imagesPage) View() string {
 	b.WriteString("Images\n")
 
 	b.WriteString(p.imagesTable.View())
-	b.WriteString("\n(space: select, d: delete, r: refresh, q: quit)\n")
+	footer := renderHelp(
+		p.imagesTable.KeyMap.LineUp,
+		p.imagesTable.KeyMap.LineDown,
+		p.km.Select,
+		p.km.Delete,
+		p.km.Refresh,
+		p.gkm.Quit,
+	)
+	if footer != "" {
+		b.WriteString(fmt.Sprintf("\n(%s)\n", footer))
+	}
 	return b.String()
 }
 

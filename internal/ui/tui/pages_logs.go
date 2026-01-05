@@ -95,14 +95,15 @@ type logsPage struct {
 	ch     <-chan usecase.LogEvent
 	pinned bool // if true, auto-follow (GotoBottom) on new lines
 
-	km logsKeyMap
+	gkm globalKeyMap
+	km  logsKeyMap
 }
 
 // compile-time interface check
 var _ Page = logsPage{}
 var _ PageCloser = logsPage{}
 
-func newLogsPage(containerUC *usecase.ContainerUsecase, containerID, containerName string) Page {
+func newLogsPage(gkm globalKeyMap, containerUC *usecase.ContainerUsecase, containerID, containerName string) Page {
 	return logsPage{
 		containerUC:   containerUC,
 		containerID:   containerID,
@@ -111,6 +112,7 @@ func newLogsPage(containerUC *usecase.ContainerUsecase, containerID, containerNa
 		ring:          newLogRing(logsMaxLines),
 		vp:            viewport.New(0, 0),
 		pinned:        true,
+		gkm:           gkm,
 		km:            newLogsKeyMap(),
 	}
 }
@@ -258,7 +260,11 @@ func (p logsPage) headerView() string {
 }
 
 func (p logsPage) footerView() string {
-	return "(↑/↓: scroll, f: follow, esc/b: back, q:quit)"
+	footer := renderHelp(p.km.ScrollUp, p.km.Follow, p.km.Back, p.gkm.Quit)
+	if footer == "" {
+		return ""
+	}
+	return fmt.Sprintf("(%s)", footer)
 }
 
 func (p logsPage) bodyView() string {

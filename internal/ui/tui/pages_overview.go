@@ -20,14 +20,15 @@ type overviewPage struct {
 	width  int
 	height int
 
-	km overviewKeyMap
+	gkm globalKeyMap
+	km  overviewKeyMap
 }
 
 // compile-time interface check
 var _ Page = overviewPage{}
 
-func newOverviewPage(daemonUC *usecase.DaemonUsecase) Page {
-	return overviewPage{daemonUC: daemonUC, loading: true, km: newOverviewKeyMap()}
+func newOverviewPage(gkm globalKeyMap, daemonUC *usecase.DaemonUsecase) Page {
+	return overviewPage{daemonUC: daemonUC, loading: true, gkm: gkm, km: newOverviewKeyMap()}
 }
 
 type daemonInfoLoadedMsg engine.DaemonInfo
@@ -85,7 +86,10 @@ func (p overviewPage) View() string {
 	if p.info == nil {
 		b.WriteString("Failed to connect to the Docker daemon.\n")
 		b.WriteString("Please make sure the daemon is running.\n")
-		b.WriteString("\nr: refresh,  q: quit\n")
+		footer := renderHelp(p.km.Refresh, p.gkm.Quit)
+		if footer != "" {
+			b.WriteString(fmt.Sprintf("%s\n", footer))
+		}
 		return b.String()
 	}
 
@@ -93,6 +97,9 @@ func (p overviewPage) View() string {
 	b.WriteString(fmt.Sprintf("Version: %s\n", p.info.ServerVersion))
 	b.WriteString(fmt.Sprintf("OS: %s\n\n", p.info.OperatingSystem))
 
-	b.WriteString("r: refresh,  q: quit\n")
+	footer := renderHelp(p.gkm.NavOverview, p.gkm.NavImages, p.gkm.NavContainers, p.km.Refresh, p.gkm.Quit)
+	if footer != "" {
+		b.WriteString(fmt.Sprintf("%s\n", footer))
+	}
 	return b.String()
 }
