@@ -48,6 +48,15 @@ func (p overviewPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p.width, p.height = msg.Width, msg.Height
 		return p, nil
 
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "r":
+			// reload daemon info
+			p.loading = true
+			p.info = nil
+			return p, p.Init()
+		}
+
 	case daemonInfoLoadedMsg:
 		p.loading = false
 		x := engine.DaemonInfo(msg)
@@ -74,7 +83,7 @@ func (p overviewPage) View() string {
 	if p.info == nil {
 		b.WriteString("Failed to connect to the Docker daemon.\n")
 		b.WriteString("Please make sure the daemon is running.\n")
-		b.WriteString("\nq: quit\n")
+		b.WriteString("\nr: refresh,  q: quit\n")
 		return b.String()
 	}
 
@@ -82,6 +91,6 @@ func (p overviewPage) View() string {
 	b.WriteString(fmt.Sprintf("Version: %s\n", p.info.ServerVersion))
 	b.WriteString(fmt.Sprintf("OS: %s\n\n", p.info.OperatingSystem))
 
-	b.WriteString("q: quit\n")
+	b.WriteString("r: refresh,  q: quit\n")
 	return b.String()
 }

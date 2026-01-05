@@ -97,6 +97,14 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p = p.applyTableLayout()
 		return p, nil
 
+	case tea.KeyMsg:
+		if msg.String() == "r" && !p.loading && !p.deleting {
+			p.loading = true
+			p.selected = map[string]struct{}{}
+			p.pendingDeleteIDs = nil
+			return p, p.Init()
+		}
+
 	case containersLoadedMsg:
 		p.loading = false
 		p.deleting = false
@@ -157,7 +165,7 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		case "d":
 			ids := p.selectedDeletableIDs()
 			if len(ids) == 0 {
-				return p, openDialogCmd(dialogInfo, "Containers", "No containersselected")
+				return p, openDialogCmd(dialogInfo, "Containers", "No containers selected")
 			}
 			p.pendingDeleteIDs = ids
 			body := fmt.Sprintf("Delete %d container(s)?", len(ids))
@@ -195,7 +203,7 @@ func (p containersPage) View() string {
 	b.WriteString("Containers\n")
 	b.WriteString(p.containersTable.View())
 
-	b.WriteString("\n(space: select, d: delete, enter: logs, q to quit)\n")
+	b.WriteString("\n(space: select, d: delete, enter: logs, r: refresh, q to quit)\n")
 	return b.String()
 }
 
