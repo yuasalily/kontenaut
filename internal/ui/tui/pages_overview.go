@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yuasalily/kontenaut/internal/infra/engine"
 	"github.com/yuasalily/kontenaut/internal/usecase"
@@ -18,13 +19,15 @@ type overviewPage struct {
 
 	width  int
 	height int
+
+	km overviewKeyMap
 }
 
 // compile-time interface check
 var _ Page = overviewPage{}
 
 func newOverviewPage(daemonUC *usecase.DaemonUsecase) Page {
-	return overviewPage{daemonUC: daemonUC, loading: true}
+	return overviewPage{daemonUC: daemonUC, loading: true, km: newOverviewKeyMap()}
 }
 
 type daemonInfoLoadedMsg engine.DaemonInfo
@@ -49,8 +52,7 @@ func (p overviewPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		return p, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "r":
+		if key.Matches(msg, p.km.Refresh) {
 			// reload daemon info
 			p.loading = true
 			p.info = nil

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -93,6 +94,8 @@ type logsPage struct {
 	cancel context.CancelFunc
 	ch     <-chan usecase.LogEvent
 	pinned bool // if true, auto-follow (GotoBottom) on new lines
+
+	km logsKeyMap
 }
 
 // compile-time interface check
@@ -108,6 +111,7 @@ func newLogsPage(containerUC *usecase.ContainerUsecase, containerID, containerNa
 		ring:          newLogRing(logsMaxLines),
 		vp:            viewport.New(0, 0),
 		pinned:        true,
+		km:            newLogsKeyMap(),
 	}
 }
 
@@ -169,20 +173,20 @@ func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		return p, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "esc", "b":
+		if key.Matches(msg, p.km.Back) {
 			return p, func() tea.Msg { return navigateMsg{to: pageContainers} }
-		case "f":
+		}
+		if key.Matches(msg, p.km.Follow) {
 			p.pinned = true
 			if !p.loading {
 				p.vp.GotoBottom()
 			}
 			return p, nil
 		}
+
 		if !p.loading {
 			// If user scrolls up, stop auto-follow until they jump to bottom.
-			switch msg.String() {
-			case "up", "k", "pgup":
+			if key.Matches(msg, p.km.ScrollUp) {
 				p.pinned = false
 			}
 			var cmd tea.Cmd
@@ -327,7 +331,7 @@ func (p *logsPage) rebuildViewportContent(gotoBottom bool) {
 	keepOffset := !gotoBottom
 	var prevY int
 	if keepOffset {
-		prevY = max(p.vp.YOffset + p.pendingYOffsetDelta, 0)
+		prevY = max(p.vp.YOffset+p.pendingYOffsetDelta, 0)
 	}
 
 	// delta is applied (or discarded) on rebuild.
