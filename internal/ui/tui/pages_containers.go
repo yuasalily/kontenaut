@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yuasalily/kontenaut/internal/infra/engine"
@@ -29,6 +30,8 @@ type containersPage struct {
 	locked   map[string]struct{}
 
 	pendingDeleteIDs []string
+
+	km containersKeyMap
 }
 
 // compile-time interface check
@@ -41,6 +44,7 @@ func newContainersPage(containerUC *usecase.ContainerUsecase) Page {
 		containersTable: newContainersTable(),
 		selected:        map[string]struct{}{},
 		locked:          map[string]struct{}{},
+		km:              newContainersKeyMap(),
 	}
 }
 
@@ -205,6 +209,56 @@ func (p containersPage) View() string {
 
 	b.WriteString("\n(space: select, d: delete, enter: logs, r: refresh, q to quit)\n")
 	return b.String()
+}
+
+func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool) {
+	if p.loading || p.deleting {
+		return p, nil, false
+	}
+
+	switch {
+	case key.Matches(msg, p.km.Refresh):
+		p.loading = true
+		p.selected = map[string]struct{}{}
+		p.pendingDeleteIDs = nil
+		return p, p.Init(), true
+
+	case key.Matches(msg, p.km.Select):
+		id, ok := p.cursorContainerID()
+		if !ok {
+			return p, nil, true
+		}
+		if p.isLocked(id) {
+			return p, nil, true
+		}
+		p.toggleSelected(id)
+		p.containersTable.SetRows(rowsFromContainerSummaries(p.containers, p.containersTable.Columns(), p.selected, p.locked))
+		return p, nil, true
+
+	case key.Matches(msg, p.km.Delete):
+		ids := p.selectedDeletableIDs()
+		if len(ids) == 0 {
+			return p, openDialogCmd(dialogInfo, "Containers", "No containers selected"), true
+		}
+		p.pendingDeleteIDs = ids
+		body := fmt.Sprintf("Delete %d container(s)?", len(ids))
+		return p, openConfirmDialogCmd(confirmDeleteContainers, "Containers", body), true
+
+	case key.Matches(msg, p.km.Logs):
+		c, ok := p.cursorContainer()
+		if !ok {
+			return p, nil, true
+		}
+		name := c.Name
+		if name == "" {
+			name = "Unnamed"
+		}
+		return p, func() tea.Msg {
+			return openLogsMsg{id: c.ID, name: name}
+		}, true
+	}
+
+	return p, nil, false
 }
 
 func (p containersPage) applyTableLayout() containersPage {
