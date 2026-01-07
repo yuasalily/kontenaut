@@ -6,6 +6,7 @@ import (
 )
 
 type Engine interface {
+	Close() error
 	DaemonInfo(ctx context.Context) (DaemonInfo, error)
 	ListImages(ctx context.Context) ([]ImageSummary, error)
 	ListContainers(ctx context.Context) ([]ContainerSummary, error)
