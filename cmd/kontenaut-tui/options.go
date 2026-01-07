@@ -13,7 +13,8 @@ import (
 )
 
 type options struct {
-	Endpoint string
+	ConfigPath string
+	Endpoint   string
 }
 
 func parseFlags(args []string) (options, error) {
@@ -22,6 +23,13 @@ func parseFlags(args []string) (options, error) {
 	fs := flag.NewFlagSet("kontenaut-tui", flag.ContinueOnError)
 	// Avoid writing parse errors/help to stdout/stderr during tests.
 	fs.SetOutput(io.Discard)
+
+	fs.StringVar(
+		&opts.ConfigPath,
+		"config",
+		"",
+		"Path to config file (JSON). If empty, config file is not loaded.",
+	)
 
 	fs.StringVar(
 		&opts.Endpoint,
