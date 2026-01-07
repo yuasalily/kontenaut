@@ -238,7 +238,7 @@ func (p containersPage) applyTableLayout() containersPage {
 	if p.width <= 0 || p.height <= 0 {
 		return p
 	}
-	tableHeight := max(p.height-4, 1)
+	tableHeight := max(p.height-tableNonBodyRows, 1)
 
 	p.containersTable.SetWidth(p.width)
 	p.containersTable.SetHeight(tableHeight)

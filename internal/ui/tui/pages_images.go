@@ -252,7 +252,7 @@ func (p imagesPage) applyTableLayout() imagesPage {
 	if p.width <= 0 || p.height <= 0 {
 		return p
 	}
-	tableHeight := max(p.height-4, 1)
+	tableHeight := max(p.height-tableNonBodyRows, 1)
 
 	p.imagesTable.SetWidth(p.width)
 	p.imagesTable.SetHeight(tableHeight)

@@ -14,9 +14,6 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
-const logsMaxLines = 5000
-const logsRebuildInterval = 100 * time.Millisecond
-
 // logRing is a fixed-size ring buffer specialized for log lines.
 // It keeps the last N lines in chronological order (oldest -> newest)
 type logRing struct {
@@ -159,7 +156,7 @@ func logsTickCmd() tea.Cmd {
 }
 
 func (p logsPage) Init() tea.Cmd {
-	return tea.Batch(startFollowLogsCmd(p.containerUC, p.containerID, 200), logsTickCmd())
+	return tea.Batch(startFollowLogsCmd(p.containerUC, p.containerID, logsDefaultTail), logsTickCmd())
 }
 
 func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
@@ -281,7 +278,7 @@ func (p logsPage) applyViewportLayout() logsPage {
 	if p.width <= 0 || p.height <= 0 {
 		return p
 	}
-	bodyH := max(p.height-4, 1)
+	bodyH := max(p.height-logsNonBodyRows, 1)
 	p.vp.Width = p.width
 	p.vp.Height = bodyH
 	return p
