@@ -1,3 +1,6 @@
+## 0.0.53
+- configファイルパスをKONTENAUT_CONFIGで指定できるようにした
+
 ## 0.0.52
 - Docker EngineのOptionパターン化
 

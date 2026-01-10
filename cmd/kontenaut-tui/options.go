@@ -28,7 +28,8 @@ func parseFlags(args []string) (options, error) {
 		&opts.ConfigPath,
 		"config",
 		"",
-		"Path to config file (JSON). If empty, config file is not loaded.",
+		"Path to config file (JSON). If empty, config file is not loaded. "+
+			"You can also set it via KONTENAUT_CONFIG",
 	)
 
 	fs.StringVar(

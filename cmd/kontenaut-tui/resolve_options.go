@@ -1,6 +1,7 @@
 package main
 
 const envKontenautEndpoint = "KONTENAUT_ENDPOINT"
+const envKontenautConfig = "KONTENAUT_CONFIG"
 
 // lookupEnvFunc matches os.LookupEnv.
 type lookupEnvFunc func(key string) (string, bool)
@@ -11,9 +12,18 @@ func resolveOptions(cli options, lookup lookupEnvFunc) (options, error) {
 	// defaults
 	out := options{}
 
-	// config file (if provided)
-	if cli.ConfigPath != "" {
-		cfg, err := loadConfigFile(cli.ConfigPath)
+	// Recolve config path (selection-only) with precedence:
+	// env < CLI flag
+	configPath := cli.ConfigPath
+	if configPath != "" && lookup != nil {
+		if v, ok := lookup(envKontenautConfig); ok {
+			configPath = v
+		}
+	}
+
+	// config file (if provided via env/flag)
+	if configPath != "" {
+		cfg, err := loadConfigFile(configPath)
 		if err != nil {
 			return options{}, err
 		}
@@ -30,8 +40,8 @@ func resolveOptions(cli options, lookup lookupEnvFunc) (options, error) {
 	// CLI flags
 	out = mergeOptions(out, cli)
 
-	// Normalize (keep ConfigPath from CLI only; it's not a runtime setting itself)
-	out.ConfigPath = cli.ConfigPath
+	// Normalize (ConfigPath is selection-only, but keep the resolved one for visibility)
+	out.ConfigPath = configPath
 
 	// validate
 	if err := validateOptions(out); err != nil {
