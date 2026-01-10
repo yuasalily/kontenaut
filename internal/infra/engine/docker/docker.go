@@ -21,23 +21,32 @@ type DockerEngine struct {
 
 var _ engine.Engine = (*DockerEngine)(nil)
 
-func New() (*DockerEngine, error) {
-	cli, err := client.New(client.FromEnv)
-	if err != nil {
-		return nil, err
+func New(opts ...Option) (*DockerEngine, error) {
+	cfg := config{}
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		opt(&cfg)
 	}
-	return &DockerEngine{cli: cli}, nil
-}
 
-// NewWithEndpoint creates a docker client with an explicit endpoint.
-//
-// It still applies client.FromEnv so TLS-related settings can be picked up from env vars,
-// then overrides the host with the provided endpoint.
-func NewWithEndpoint(endpoint string) (*DockerEngine, error) {
-	cli, err := client.New(
-		client.FromEnv,
-		client.WithHost(endpoint),
+	var (
+		cli *client.Client
+		err error
 	)
+
+	// Endpoint interpretation:
+	// - empty: rely on docker SDK env resolution (DOCKER_HOST/DOCKER_*).
+	// - non-empty: explicitly override the host.
+	if cfg.endpoint == "" {
+		cli, err = client.New(client.FromEnv)
+	} else {
+		// Keep client.FromEnv so TLS-related settings can be picked up from env vars.
+		cli, err = client.New(
+			client.FromEnv,
+			client.WithHost(cfg.endpoint),
+		)
+	}
 	if err != nil {
 		return nil, err
 	}

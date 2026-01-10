@@ -6,7 +6,7 @@ const envKontenautEndpoint = "KONTENAUT_ENDPOINT"
 type lookupEnvFunc func(key string) (string, bool)
 
 // resolveOptions resolves runtime options with precedence:
-// defailts < config file < env vars < CLI flags
+// defaults < config file < env vars < CLI flags
 func resolveOptions(cli options, lookup lookupEnvFunc) (options, error) {
 	// defaults
 	out := options{}
