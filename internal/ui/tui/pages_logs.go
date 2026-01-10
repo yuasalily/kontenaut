@@ -67,6 +67,12 @@ func (r *logRing) Slice() []string {
 	return out
 }
 
+// logsPage shows container logs with tail+follow.
+//
+// Why:
+// - Logs can be high frequency; rebuilding viewpoint content for every line is costly.
+// - We buffer line in a fixed-size ring and rebuild periodically to keep UI responsive.
+// - When user scrolls up (pinned=false), we keep the viewport "frozen" even if old lines are evicted.
 type logsPage struct {
 	containerUC *usecase.ContainerUsecase
 
@@ -78,8 +84,12 @@ type logsPage struct {
 	dirty   bool // content needs rebuild
 
 	// pendingYOffsetDelta accumulates YOffset adjustments while pinned=false.
-	// It compensates for ring eviction so the viewport keeps showing the same log content (freeze semantics).
-	// Applied on the next rebuild tick.
+	// Why (freeze semantics):
+	// - When pinned=false, the user is reading older logs.
+	// - The ring buffer may evict from the head as new lines arrive.
+	// - Without compensation, the visible content would "jump" upward.
+	// - We estimate how may wrapped display-lines were removed and offset Y accordingly.
+	// Applied on the next rebuild tick to avoid doing expensive wrapping per event.
 	pendingYOffsetDelta int
 
 	width  int
@@ -150,6 +160,10 @@ func waitNextLogEventCmd(ch <-chan usecase.LogEvent) tea.Cmd {
 }
 
 func logsTickCmd() tea.Cmd {
+	// Why tick:
+	// - Log lines may arrive faster than the terminal can redraw.
+	// - Rebuilding wrapped content is relatively expensive (ANSI-aware hardwrap).
+	// - Tick coalesces multiple log events into fewer SetContent calls.
 	return tea.Tick(logsRebuildInterval, func(time.Time) tea.Msg {
 		return logsTickMsg{}
 	})
