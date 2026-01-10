@@ -13,6 +13,11 @@ type lookupEnvFunc func(key string) (string, bool)
 
 // resolveOptions resolves runtime options with precedence:
 // defaults < config file < env vars < CLI flags
+//
+// Why:
+// - CLI flags must always win for predictability and debugging.
+// - Config file provides stable defaults for local environments.
+// - Env vars are convenient for shells/CI and should override config.
 func resolveOptions(cli options, lookup lookupEnvFunc) (options, error) {
 	// defaults
 	out := options{}
@@ -23,6 +28,10 @@ func resolveOptions(cli options, lookup lookupEnvFunc) (options, error) {
 	// NOTE:
 	// - If neither is set, config file is not loaded.
 	// - CLI flag must win over env var.
+	//
+	// Why selection-only:
+	// - ConfigPath is not a "setting" of the app; it is an input for resolving settings.
+	// - We intentionally avoid merging it from config/env to keep resolution simple and explicit.
 	configPath := ""
 	if lookup != nil {
 		if v, ok := lookup(envKontenautConfig); ok {
@@ -92,6 +101,10 @@ func validateOptions(opts options) error {
 	case "unix":
 		// Examples: unix:///var/run/docker.sock
 		// Note: host may be empty for unix sockets.
+		//
+		// Why minimal validation:
+		// - Docker SDK supports multiple schemes and platform-specific formats.
+		// - We only guard against clearly invalid inputs and let the SDK handle the rest.
 		if u.Path == "" {
 			return fmt.Errorf("invalid endpoint %q: unix endpoint must include a socket path (e.g. unix:///var/run/docker.sock)", opts.Endpoint)
 		}

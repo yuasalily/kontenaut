@@ -11,6 +11,9 @@ import (
 //	{
 //	   "endpoint": "unix:///var/run/docker.sock"
 //	}
+// Why:
+// - Keep the config minimal and explicit: the app selects an endpoint only at startup.
+// - Advanced Docker client settings are intentionally delegated to DOCKER_* env vars.
 type fileConfig struct {
 	Endpoint string `json:"endpoint"`
 }
