@@ -17,7 +17,6 @@ type ContainerUsecase struct {
 	eng engine.Engine
 }
 
-
 // NewContainerUsecase constructs a ContainerUsecase.
 func NewContainerUsecase(eng engine.Engine) *ContainerUsecase {
 	return &ContainerUsecase{eng: eng}
@@ -38,13 +37,13 @@ func (u *ContainerUsecase) Delete(ctx context.Context, containerID string) error
 
 // Logs returns a snapshot of container logs (non-follow).
 //
-// NOTE:
+// Note:
 // This method is currently not used by the TUI logs page, which relies on follow-based streaming instead.
 // It is intentionally kept as a snapshot API for potential future use (e.g. export, copy, fallback, or tests).
 //
 // Why snapshot exists:
 // - Some UX features want a bounded, consistent log view (copy/export).
-// Streaming is handled separately to keep this method simple and predictable.
+// - Streaming is handled separately to keep this method simple and predictable.
 func (u *ContainerUsecase) Logs(ctx context.Context, containerID string, tail int) ([]string, error) {
 	return u.eng.ContainerLogs(ctx, containerID, tail)
 }
@@ -52,7 +51,7 @@ func (u *ContainerUsecase) Logs(ctx context.Context, containerID string, tail in
 // LogEvent is a UI-agnostic event for streaming container logs.
 //
 // - Line: a single log line (without trailing newline).
-// - Done: true when the steam ends normally (EOF / ctx cancel)
+// - Done: true when the stream ends normally (EOF / ctx cancel)
 // - Err: non-nil when the stream ends due to an error.
 type LogEvent struct {
 	Line string
@@ -62,7 +61,7 @@ type LogEvent struct {
 
 // FollowLogs streams container logs as line events.
 //
-// This method intentionally hides io.ReaderCloser from callers.
+// This method intentionally hides io.ReadCloser from callers.
 // Cancellation is controlled by ctx; the internal reader will be closed on exit.
 //
 // Why channel-based API:

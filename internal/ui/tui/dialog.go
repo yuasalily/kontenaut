@@ -124,5 +124,8 @@ func (d *dialogModel) View() string {
 		h = 24
 	}
 
+	// Why Place:
+	// - Dialogs should feel modal and distinct, so we center them.
+	// - We fall back to a typical terminal size before receiving WindowSizeMsg (e.g. first render or tests).
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, box)
 }

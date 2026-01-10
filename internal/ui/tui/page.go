@@ -28,6 +28,11 @@ func pageMetas() []PageMeta {
 type navigateMsg struct{ to pageID }
 
 type openLogsMsg struct {
+	// id is a container ID.
+	//
+	// Why include ID in the message:
+	// - The logs page needs a stable reference even if the container list changes after navigation.
+	// - It decouples the logs page from table row indices.
 	id string
 	name string
 }

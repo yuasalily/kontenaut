@@ -6,6 +6,9 @@ import (
 	"os"
 )
 
+// main is the kontenaut-tui entrypoint.
+// Why this file is thin:
+// - It keeps wiring (flags/env/config and program startup) separate from UI/infra code.
 func main() {
 	cli, err := parseFlags(os.Args[1:])
 	if err != nil {

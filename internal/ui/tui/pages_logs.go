@@ -47,7 +47,7 @@ func (r *logRing) Push(line string) (evictedLine string, evicted bool) {
 		return "", false
 	}
 
-	// full :overwrite oldest and advance start
+	// full: overwrite oldest and advance start
 	oldest := r.buf[r.start]
 	r.buf[r.start] = line
 	r.start = (r.start + 1) % len(r.buf)
@@ -70,8 +70,8 @@ func (r *logRing) Slice() []string {
 // logsPage shows container logs with tail+follow.
 //
 // Why:
-// - Logs can be high frequency; rebuilding viewpoint content for every line is costly.
-// - We buffer line in a fixed-size ring and rebuild periodically to keep UI responsive.
+// - Logs can be high frequency; rebuilding viewport content for every line is costly.
+// - We buffer lines in a fixed-size ring and rebuild periodically to keep UI responsive.
 // - When user scrolls up (pinned=false), we keep the viewport "frozen" even if old lines are evicted.
 type logsPage struct {
 	containerUC *usecase.ContainerUsecase
@@ -88,7 +88,7 @@ type logsPage struct {
 	// - When pinned=false, the user is reading older logs.
 	// - The ring buffer may evict from the head as new lines arrive.
 	// - Without compensation, the visible content would "jump" upward.
-	// - We estimate how may wrapped display-lines were removed and offset Y accordingly.
+	// - We estimate how many wrapped display-lines were removed and offset Y accordingly.
 	// Applied on the next rebuild tick to avoid doing expensive wrapping per event.
 	pendingYOffsetDelta int
 
@@ -219,7 +219,7 @@ func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 
 	case logsEventReceivedMsg:
 		if !msg.ok {
-			// channel closed -> follow ended normally
+			// Channel closed -> follow ended normally
 			return p, nil
 		}
 		if msg.ev.Err != nil {
@@ -303,7 +303,7 @@ func wrapLogLines(lines []string, width int) []string {
 		return nil
 	}
 
-	// NOTE: width is terminal cell width; ansi.Hardwrap is ANSI-aware and wide-char aware.
+	// Note: width is terminal cell width; ansi.Hardwrap is ANSI-aware and wide-char aware.
 	if width <= 0 {
 		return lines
 	}
@@ -368,7 +368,7 @@ func (p *logsPage) rebuildViewportContent(gotoBottom bool) {
 }
 
 func (p logsPage) Close() tea.Cmd {
-	// capture at call time
+	// Capture at call time
 	cancel := p.cancel
 	return func() tea.Msg {
 		if cancel != nil {
