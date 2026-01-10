@@ -8,6 +8,10 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
+// run wires infra/usecases/UI and starts the Bubble Tea program.
+//
+// Why run(opts) returns error:
+// - main() owns error handling and process exit.
 func run(opts options) error {
 	eng, err := newEngine(opts)
 	if err != nil {
@@ -32,6 +36,11 @@ func run(opts options) error {
 	return nil
 }
 
+// new Engine constructs the engine.Engine implementation.
+//
+// Why keep endpoint logic here:
+// - main resolves options; infra wiring happens in one place.
+// - It keeps UI/usecases unaware of endpoint selection.
 func newEngine(opts options) (engine.Engine, error) {
 	// Interpretation of endpoint:
 	// - empty: rely on docker SDK env resolution (DOCKER_HOST/DOCKER_*).

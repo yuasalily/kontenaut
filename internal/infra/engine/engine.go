@@ -32,7 +32,7 @@ type Engine interface {
 
 	// ContainerLogs returns a snapshot of container logs without follow
 	//
-	// NOTE:
+	// Note:
 	// Follow-based log streaming is implemented separately
 	// This snapshot API is kept intentionally for non-streaming use cases.
 	ContainerLogs(ctx context.Context, containerID string, tail int) ([]string, error)

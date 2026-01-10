@@ -14,6 +14,11 @@ import (
 
 const confirmDeleteImages ConfirmID = "images:delete"
 
+// imagesPage renders the Images list and destructive actions (delete).
+//
+// Why:
+// - Docker prevents deleting images in use; we compute "locked" to prevent noisy errors.
+// - UI concerns (selection, confirmation) live here; usecases perform operations.
 type imagesPage struct {
 	imageUC *usecase.ImageUsecase
 
@@ -229,6 +234,9 @@ func (p imagesPage) handleKey(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
 			return p, nil, true
 		}
 		if p.isLocked(id) {
+			// Why no-op:
+			// - Locked images are in use by containers and deletion would fail.
+			// - Skipping selection avoids noisy error dialogs.
 			return p, nil, true
 		}
 		p.toggleSelected(id)
@@ -257,6 +265,8 @@ func (p imagesPage) applyTableLayout() imagesPage {
 	p.imagesTable.SetWidth(p.width)
 	p.imagesTable.SetHeight(tableHeight)
 
+	// Why dynamic columns:
+	// - Terminal width varies widely; allocate remaining space to REPO:TAG for readability.
 	cols := columnsForImagesWidth(p.width)
 	p.imagesTable.SetColumns(cols)
 	if len(p.images) > 0 {
@@ -322,6 +332,9 @@ func rowsFromImageSummaries(items []engine.ImageSummary, cols []table.Column, se
 		} else if _, ok := selected[img.ID]; ok {
 			sel = "[x]"
 		}
+		// Why trim sha256 prefix:
+		// - Docker image IDs are long; trimming improves table readability.
+		// - The remaining prefix is typically sufficient for identification in UI.
 		displayID := strings.TrimPrefix(img.ID, "sha256:")
 		row := table.Row{
 			truncImage(sel, selW),

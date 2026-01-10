@@ -8,6 +8,14 @@ import (
 const envKontenautEndpoint = "KONTENAUT_ENDPOINT"
 const envKontenautConfig = "KONTENAUT_CONFIG"
 
+// Environment variables:
+// - KONTENAUT_CONFIG: config file path (selection-only)
+// - KONTENAUT_ENDPOINT: Docker endpoint override (setting)
+//
+// Why separate vars:
+// - ConfigPath decides whether/what to load; it is not itself a "setting".
+// - Endpoint is a runtime setting and can be overridden independently.
+
 // lookupEnvFunc matches os.LookupEnv.
 type lookupEnvFunc func(key string) (string, bool)
 
@@ -25,7 +33,7 @@ func resolveOptions(cli options, lookup lookupEnvFunc) (options, error) {
 	// Resolve config path (selection-only) with precedence:
 	// env < CLI flag
 	//
-	// NOTE:
+	// Note:
 	// - If neither is set, config file is not loaded.
 	// - CLI flag must win over env var.
 	//
@@ -65,6 +73,9 @@ func resolveOptions(cli options, lookup lookupEnvFunc) (options, error) {
 	out.ConfigPath = configPath
 
 	// validate
+	// Why validate here:
+	// - It provides immediate feedback before creating engine/UI resources.
+	// - Validation is minimal to avoid rejecting formats the Docker SDK can handle.
 	if err := validateOptions(out); err != nil {
 		return options{}, err
 	}
@@ -74,7 +85,11 @@ func resolveOptions(cli options, lookup lookupEnvFunc) (options, error) {
 
 func mergeOptions(base, override options) options {
 	out := base
-	// NOTE: ConfigPath is CLI-only; do not merge from config/env.
+	// Note: ConfigPath is CLI-only; do not merge from config/env.
+	//
+	// Why:
+	// - ConfigPath is selection-only and would create a confusing "config in config" situation.
+	// - Keeping it CLI/env only makes resolution predictable.
 	if override.Endpoint != "" {
 		out.Endpoint = override.Endpoint
 	}
@@ -82,6 +97,11 @@ func mergeOptions(base, override options) options {
 }
 
 func validateOptions(opts options) error {
+	// Validation policy:
+	// - We perform only basic URL-level checks.
+	// - We avoid over-validation because Docker SDK supports multiple schemes and plat forms quirks.
+	//
+	// Endpoint is allowed to be empty: in that case, Docker SDK resolves via env vars.
 	// Endpoint:
 	// - empty: OK (resolve via docker SDK env vars)
 	// - non-empty: basic sanity checks only (avoid over-validation)

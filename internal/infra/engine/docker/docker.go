@@ -17,6 +17,7 @@ import (
 
 // Docker Engine is an engine.Engine implementation backed by the Docker SDK client.
 type DockerEngine struct {
+	// cli is a Docker SDK client. It is safe to reuse across calls and must be closed on shutdown.
 	cli *client.Client
 }
 
@@ -84,7 +85,6 @@ func (d *DockerEngine) DaemonInfo(ctx context.Context) (engine.DaemonInfo, error
 		ServerVersion:   info.Info.ServerVersion,
 		OperatingSystem: os,
 	}, nil
-
 }
 
 // ListImages returns image summaries for the Images page.

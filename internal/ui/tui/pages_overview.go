@@ -11,6 +11,10 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
+// overviewPage renders daemon connectivity and basic daemon metadata.
+//
+// Why:
+// - Keep the first screen simple: it helps diagnose endpoint/daemon issues quickly.
 type overviewPage struct {
 	daemonUC *usecase.DaemonUsecase
 
@@ -54,7 +58,8 @@ func (p overviewPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if key.Matches(msg, p.km.Refresh) {
-			// reload daemon info
+			// Why reload:
+			// - Daemon availability can change after startup (e.g. Docker Desktop waking up).
 			p.loading = true
 			p.info = nil
 			return p, p.Init()

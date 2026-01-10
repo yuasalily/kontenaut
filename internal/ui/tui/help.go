@@ -13,8 +13,12 @@ import (
 // Output format:
 // (↑/k: up, ↓/j: down, r: refresh, q: quit)
 //
-// When the content is too long, it wraps to multiple lines via lipgloss.Wrap.
+// When the content is too long, it wraps to multiple lines via ansi.Wrap (ANSI-aware)
 // maxWidth is the available width in terminal cells. If maxWidth <= 0, no wrapping is applied.
+//
+// Why wrap on ",":
+// - Keeps key bindings scan-friendly on narrow terminals.
+// - Avoids breaking "k: up" pairs across lines when possible
 func renderHelpBlock(maxWidth int, bindings ...key.Binding) string {
 	parts := make([]string, 0, len(bindings))
 	for _, b := range bindings {

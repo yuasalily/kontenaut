@@ -7,9 +7,10 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
+// modalSession tracks the current modal dialog state (if any)
 type modalSession struct {
 	dialog    *dialogModel
-	confirmID ConfirmID // confirm dialog出ない場合は空
+	confirmID ConfirmID // confirm dialogではない場合は空
 }
 
 func (s modalSession) isConfirm() bool { return s.confirmID != "" }
@@ -58,6 +59,11 @@ func (m routerModel) Init() tea.Cmd {
 }
 
 func (m routerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Why ordering:
+	// Window size affects layout everywhere (including modal), so handle it first.
+	// - Global keys (quit/navigation) should work consistently across pages.
+	// - Dialogs should intercept key events and prevent them from reaching pages.
+
 	// ウィンドウサイズの処理
 	if handled, cmd := m.handleWindowSize(msg); handled {
 		return m, cmd
@@ -175,6 +181,9 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case openLogsMsg:
+		// Why logs are opened via Msg:
+		// - Keeps navigation page-agnostic (pages emit messages; router decides transitions).
+		// - Allows including immutable data (container ID/name) at the time of selection.
 		closeCmd := m.closeCurrentPageCmd()
 		m.currentPageID = pageContainers
 		m.currentPage = newLogsPage(m.km, m.containerUC, msg.id, msg.name)
@@ -183,7 +192,11 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case navigateMsg:
 		// Close the current page (if supported) right before navigation.
-		// NOTE: closeCmd is generated before currentPage is replaced.
+		// Note: closeCmd is generated before currentPage is replaced.
+		//
+		// Why:
+		// - Some pages start background tasks (e.g. log streaming).
+		// - Close must be created before overwriting currentPage.
 		closeCmd := m.closeCurrentPageCmd()
 		switch msg.to {
 		case pageOverview:

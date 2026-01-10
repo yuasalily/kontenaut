@@ -6,11 +6,21 @@ import (
 	"io"
 )
 
+// options represents runtime settings resolved from config/env/flags.
+//
+// Note:
+// - ConfigPath is "selection-only": it points to a file used to resolve settings.
+// - Endpoint is the actual resolved settings used to construct the engine.
 type options struct {
 	ConfigPath string
 	Endpoint   string
 }
 
+// parseFlags parses CLI flags into options.
+//
+// Why return (options, error):
+// - It keeps flag parsing testable and avoids calling os.Exit in helpers.
+// - main() owns program termination.
 func parseFlags(args []string) (options, error) {
 	var opts options
 
@@ -35,6 +45,9 @@ func parseFlags(args []string) (options, error) {
 	)
 
 	fs.Usage = func() {
+		// Why use fs output:
+		// - FlagSet output is redirected to io.Discard for tests.
+		// - In interactive use, FlagSet uses the default flag.CommandLine output.
 		fmt.Fprintln(flag.CommandLine.Output(), "Usage: kontenaut-tui [flags]")
 		fmt.Fprintln(flag.CommandLine.Output(), "")
 		fmt.Fprintln(flag.CommandLine.Output(), "Flags:")

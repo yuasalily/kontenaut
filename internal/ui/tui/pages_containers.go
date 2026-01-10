@@ -14,6 +14,11 @@ import (
 
 const confirmDeleteContainers ConfirmID = "containers:delete"
 
+// containersPage renders the Containers list and destructive actions (delete).
+//
+// Why:
+// - UI concerns (selection, confirmation, locked-state) live here.
+// - Actual operations are delegated to usecases to keep infra out of UI.
 type containersPage struct {
 	containerUC *usecase.ContainerUsecase
 
@@ -202,6 +207,9 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 			return p, nil, true
 		}
 		if p.isLocked(id) {
+			// Why no-op:
+			// - Running containers are treated as "locked" to avoid accidental deletion.
+			// - Force deletion is intentionally not exposed in this TUI.
 			return p, nil, true
 		}
 		p.toggleSelected(id)
@@ -243,6 +251,8 @@ func (p containersPage) applyTableLayout() containersPage {
 	p.containersTable.SetWidth(p.width)
 	p.containersTable.SetHeight(tableHeight)
 
+	// Why dynamic columns:
+	// - Terminal width varies widely; allocate remaining space to NAME for readability.
 	cols := columnsForContainersWidth(p.width)
 	p.containersTable.SetColumns(cols)
 	if len(p.containers) > 0 {

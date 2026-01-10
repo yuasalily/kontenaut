@@ -15,6 +15,9 @@ import (
 // - Keep the config minimal and explicit: the app selects an endpoint only at startup.
 // - Advanced Docker client settings are intentionally delegated to DOCKER_* env vars.
 type fileConfig struct {
+	// Endpoint is the Docker Engine API endpoint.
+	//
+	// Empty string is allowed and means "resolve via docker SDK env vars (DOCKER_HOST/DOCKER_*)".
 	Endpoint string `json:"endpoint"`
 }
 
