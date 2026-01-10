@@ -1,5 +1,10 @@
 package main
 
+import (
+	"fmt"
+	"net/url"
+)
+
 const envKontenautEndpoint = "KONTENAUT_ENDPOINT"
 const envKontenautConfig = "KONTENAUT_CONFIG"
 
@@ -68,8 +73,45 @@ func mergeOptions(base, override options) options {
 }
 
 func validateOptions(opts options) error {
-	// Placeholder for future validations.
-	// Example: ensure endpoint scheme looks valid if provided.
-	_ = opts
-	return nil
+	// Endpoint:
+	// - empty: OK (resolve via docker SDK env vars)
+	// - non-empty: basic sanity checks only (avoid over-validation)
+	if opts.Endpoint == "" {
+		return nil
+	}
+
+	u, err := url.Parse(opts.Endpoint)
+	if err != nil {
+		return fmt.Errorf("invalid endpoint %q: %w", opts.Endpoint, err)
+	}
+	if u.Scheme == "" {
+		return fmt.Errorf("invalid endpoint %q: missing scheme (expected scheme://...)", opts.Endpoint)
+	}
+
+	switch u.Scheme {
+	case "unix":
+		// Examples: unix:///var/run/docker.sock
+		// Note: host may be empty for unix sockets.
+		if u.Path == "" {
+			return fmt.Errorf("invalid endpoint %q: unix endpoint must include a socket path (e.g. unix:///var/run/docker.sock)", opts.Endpoint)
+		}
+		return nil
+
+	case "tcp", "ssh", "npipe":
+		// Examples:
+		// - tcp://127.0.0.1:2375
+		// - ssh://user@host
+		// - npipe:////./pipe/docker_engine
+		//
+		// For these, require some non-empty "host" component when parsed as URL.
+		// (npipe on Windows may parse in a slightly odd way depending on slashes,
+		// but in typical forms Host is present; this is still "minimum".)
+		if u.Host == "" {
+			return fmt.Errorf("invalid endpoint %q: %s endpoint must include a host (e.g. %s://host...)", opts.Endpoint, u.Scheme, u.Scheme)
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("invalid endpoint %q: unsupported scheme %q (supported: unix, tcp, ssh, npipe)", opts.Endpoint, u.Scheme)
+	}
 }
