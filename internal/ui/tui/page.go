@@ -10,6 +10,7 @@ const (
 	pageContainers
 )
 
+// PageMeta describes a page for navigation UI.
 type PageMeta struct {
 	ID    pageID
 	Title string
@@ -31,6 +32,7 @@ type openLogsMsg struct {
 	name string
 }
 
+// Page is a Bubble Tea sub-model that renders one screen and handles its own messages.
 type Page interface {
 	Init() tea.Cmd
 	Update(tea.Msg) (Page, tea.Cmd)
@@ -57,6 +59,9 @@ type Page interface {
 //
 //   - If you need to notify the model, include all necessary data in the Msg
 //     (do not rely on currentPage at Msg handling time).
+//
+// Why:
+// - Some pages start background work (e.g. log streaming) that must be stopped on navigation.
 type PageCloser interface {
 	Close() tea.Cmd
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// NavBar renders the top navigation bar
 type NavBar struct {
 	metas []PageMeta
 
@@ -13,6 +14,7 @@ type NavBar struct {
 	activeStyle lipgloss.Style
 }
 
+// NewNavBar constructs a NavBar for the given pages.
 func NewNavBar(metas []PageMeta) NavBar {
 	return NavBar{
 		metas:       metas,
@@ -21,6 +23,7 @@ func NewNavBar(metas []PageMeta) NavBar {
 	}
 }
 
+// Height returns the number of terminal rows used by the navbar.
 func (n NavBar) Height() int {
 	if len(n.metas) == 0 {
 		return 0
@@ -28,6 +31,7 @@ func (n NavBar) Height() int {
 	return 1
 }
 
+// View renders the navbar with the given page marked as active.
 func (n NavBar) View(current pageID) string {
 	if len(n.metas) == 0 {
 		return ""
@@ -44,6 +48,7 @@ func (n NavBar) View(current pageID) string {
 	return strings.Join(parts, "  ")
 }
 
+// PageIDFromKey returns the pageID for the given key.
 func (n NavBar) PageIDFromKey(k string) (pageID, bool) {
 	for _, meta := range n.metas {
 		if meta.Key == k {

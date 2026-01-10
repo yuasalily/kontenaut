@@ -32,6 +32,7 @@ func openDialogCmd(kind dialogKind, title, body string) tea.Cmd {
 	}
 }
 
+// ConfirmID identifies a confirm dialog request so the caller can match the resolved result.
 type ConfirmID string
 
 type openConfirmDialogMsg struct {

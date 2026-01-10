@@ -34,6 +34,11 @@ type routerModel struct {
 // compile-time interface check
 var _ tea.Model = routerModel{}
 
+// New constructs the root Bubble Tea model(router).
+//
+// Why:
+// - The router owns global concerns (navigation, window size, modal dialogs).
+// - Each page remains focused on its own UI/state and domain usecases.
 func New(containerUC *usecase.ContainerUsecase, imageUC *usecase.ImageUsecase, daemonUC *usecase.DaemonUsecase) tea.Model {
 	gkm := newGlobalKeyMap()
 	p := newOverviewPage(gkm, daemonUC)
