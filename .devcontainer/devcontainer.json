@@ -32,7 +32,8 @@
 			},
 			"extensions": [
 				"golang.Go",
-				"windmilleng.vscode-go-autotest"
+				"windmilleng.vscode-go-autotest",
+				"streetsidesoftware.code-spell-checker"
 			]
 		}
 	}
