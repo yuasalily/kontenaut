@@ -216,7 +216,7 @@ func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			return p, nil
 		}
 		evictedLine, evicted := p.ring.Push(msg.ev.Line)
-		// Freeze smentics:
+		// Freeze semantics:
 		// When pinned=false, keep showing the same content even if the ring evicts from the top.
 		// Compensate YOffset by the number of wrapped display-lines removed from the head.
 		if evicted && !p.pinned {

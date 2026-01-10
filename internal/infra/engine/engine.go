@@ -13,7 +13,7 @@ type Engine interface {
 	RemoveImage(ctx context.Context, imageID string) error
 	RemoveContainer(ctx context.Context, containerID string, force bool) error
 
-	// ContainerLogs returns a snapshot of contaienr logs without follow
+	// ContainerLogs returns a snapshot of container logs without follow
 	//
 	// NOTE:
 	// Follow-based log streaming is implemented separately

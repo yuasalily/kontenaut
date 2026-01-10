@@ -13,7 +13,7 @@ import (
 // Output format:
 // (↑/k: up, ↓/j: down, r: refresh, q: quit)
 //
-// When the content is too long, ti wraps to multiple lines via lipgloass.Wrap.
+// When the content is too long, it wraps to multiple lines via lipgloss.Wrap.
 // maxWidth is the available width in terminal cells. If maxWidth <= 0, no wrapping is applied.
 func renderHelpBlock(maxWidth int, bindings ...key.Binding) string {
 	parts := make([]string, 0, len(bindings))
@@ -36,10 +36,7 @@ func renderHelpBlock(maxWidth int, bindings ...key.Binding) string {
 	}
 
 	// Reserve 2 cells for "(" and ")".
-	w := maxWidth - 2
-	if w < 1 {
-		w = 1
-	}
+	w := max(maxWidth - 2, 1)
 	wrapped := ansi.Wrap(s, w, ",")
 	return "(" + wrapped + ")"
 }
