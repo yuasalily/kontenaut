@@ -72,10 +72,8 @@ func run(opts options) error {
 
 func newEngine(opts options) (engine.Engine, error) {
 	// Interpretation of endpoint:
-	// - empty: relay on docker SDK env resolution (DOCKER_HOST/DOCKER_*).
+	// - empty: rely on docker SDK env resolution (DOCKER_HOST/DOCKER_*).
 	// - non-empty: explicitly override the host.
-	if opts.Endpoint == "" {
-		return docker.New()
-	}
-	return docker.NewWithEndpoint(opts.Endpoint)
+	return docker.New(docker.WithEndpoint(opts.Endpoint))
+
 }
