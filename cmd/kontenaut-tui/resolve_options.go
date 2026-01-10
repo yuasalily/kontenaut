@@ -14,11 +14,18 @@ func resolveOptions(cli options, lookup lookupEnvFunc) (options, error) {
 
 	// Recolve config path (selection-only) with precedence:
 	// env < CLI flag
-	configPath := cli.ConfigPath
-	if configPath != "" && lookup != nil {
+	//
+	// NOTE:
+	// - If neigher is set, config file is not loaded.
+	// - CLI flag must win over onv var.
+	configPath := ""
+	if lookup != nil {
 		if v, ok := lookup(envKontenautConfig); ok {
 			configPath = v
 		}
+	}
+	if cli.ConfigPath != "" {
+		configPath = cli.ConfigPath
 	}
 
 	// config file (if provided via env/flag)
