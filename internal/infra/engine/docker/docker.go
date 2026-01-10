@@ -15,12 +15,22 @@ import (
 	"github.com/yuasalily/kontenaut/internal/infra/engine"
 )
 
+// Docker Engine is an engine.Engine implementation backed by the Docker SDK client.
 type DockerEngine struct {
 	cli *client.Client
 }
 
 var _ engine.Engine = (*DockerEngine)(nil)
 
+// New constructs a DockerEngine.
+//
+// Endpoint interpretation:
+// - empty: rely on docker SDK env resolution (DOCKER_HOST/DOCKER_*).
+// - non-empty: explicitly override the host.
+//
+// Why:
+// - Empty endpoint keeps the CLI behavior consistent with Docker tooling.
+// - Non-empty endpoint is a deliberate override while still allowing TLS env vars via FromEnv.
 func New(opts ...Option) (*DockerEngine, error) {
 	cfg := config{}
 	for _, opt := range opts {
@@ -53,10 +63,12 @@ func New(opts ...Option) (*DockerEngine, error) {
 	return &DockerEngine{cli: cli}, nil
 }
 
+// Close releases underlying Docker SDK resources.
 func (d *DockerEngine) Close() error {
 	return d.cli.Close()
 }
 
+// DaemonInfo returns basic daemon metadata for the Overview page.
 func (d *DockerEngine) DaemonInfo(ctx context.Context) (engine.DaemonInfo, error) {
 	info, err := d.cli.Info(ctx, client.InfoOptions{})
 	if err != nil {
@@ -75,6 +87,7 @@ func (d *DockerEngine) DaemonInfo(ctx context.Context) (engine.DaemonInfo, error
 
 }
 
+// ListImages returns image summaries for the Images page.
 func (d *DockerEngine) ListImages(ctx context.Context) ([]engine.ImageSummary, error) {
 	result, err := d.cli.ImageList(ctx, client.ImageListOptions{All: true})
 	if err != nil {
@@ -109,6 +122,7 @@ func (d *DockerEngine) ListImages(ctx context.Context) ([]engine.ImageSummary, e
 	return out, nil
 }
 
+// ListContainers returns container summaries for the Containers page.
 func (d *DockerEngine) ListContainers(ctx context.Context) ([]engine.ContainerSummary, error) {
 	result, err := d.cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
@@ -135,6 +149,7 @@ func (d *DockerEngine) ListContainers(ctx context.Context) ([]engine.ContainerSu
 	return out, nil
 }
 
+// RemoveImage removes an image from the local image store.
 func (d *DockerEngine) RemoveImage(ctx context.Context, imageID string) error {
 	_, err := d.cli.ImageRemove(ctx, imageID, client.ImageRemoveOptions{
 		Force:         false,
@@ -143,6 +158,7 @@ func (d *DockerEngine) RemoveImage(ctx context.Context, imageID string) error {
 	return err
 }
 
+// RemoveContainer removes a container. When force is true, running containers may be removed.
 func (d *DockerEngine) RemoveContainer(ctx context.Context, containerID string, force bool) error {
 	_, err := d.cli.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{
 		Force:         force,
@@ -152,6 +168,7 @@ func (d *DockerEngine) RemoveContainer(ctx context.Context, containerID string, 
 	return err
 }
 
+// ContainerLogs returns a non-follow snapshot of container logs (stdout+stderr).
 func (d *DockerEngine) ContainerLogs(ctx context.Context, containerID string, tail int) ([]string, error) {
 	if tail <= 0 {
 		tail = 200
@@ -179,6 +196,9 @@ func (d *DockerEngine) ContainerLogs(ctx context.Context, containerID string, ta
 	var buf bytes.Buffer
 	_, derr := stdcopy.StdCopy(&buf, &buf, bytes.NewReader(raw))
 	if derr != nil || buf.Len() == 0 {
+		// Why fallback:
+		// - Some engines/daemons may return a plain text stream instead of multiplexed frames.
+		// - If demux fails, we still want best-effort logs rather than a hard failure.
 		buf.Reset()
 		_, _ = buf.Write(raw)
 
@@ -193,6 +213,8 @@ func (d *DockerEngine) ContainerLogs(ctx context.Context, containerID string, ta
 	return strings.Split(s, "\n"), nil
 }
 
+// ContainerLogsFollow returns a follow stream (stdout+stderr) as an io.ReadCloser.
+// Callers should Close() the returned reader and cancel ctx to stop streaming promptly.
 func (d *DockerEngine) ContainerLogsFollow(ctx context.Context, containerID string, tail int) (io.ReadCloser, error) {
 	if tail <= 0 {
 		tail = 200
