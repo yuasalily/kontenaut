@@ -503,11 +503,11 @@ func rowsFromImageSummariesDelete(
 	out := make([]table.Row, 0, len(items))
 	for _, img := range items {
 		sel := "[ ]"
-		if _, ok := locked[img.ID]; ok {
+		if _, ok := busy[img.ID]; ok {
+			sel = "[*]"
+		} else if _, ok := locked[img.ID]; ok {
 			sel = "[#]"
 		} else if _, ok := selected[img.ID]; ok {
-			sel = "[x]"
-		} else if _, ok := busy[img.ID]; ok {
 			sel = "[x]"
 		}
 
