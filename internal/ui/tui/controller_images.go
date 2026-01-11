@@ -9,6 +9,7 @@ import (
 
 // imagesModeController defines mode-specific UI behaviors for the Images page.
 type imagesModeController interface {
+	ID() imagesMode
 	Title(p imagesPage) string
 	Columns(totalWidth int) []table.Column
 	NewTable() table.Model
@@ -24,6 +25,10 @@ var _ imagesModeController = (*imagesNormalController)(nil)
 
 func newImagesNormalController() imagesModeController {
 	return &imagesNormalController{}
+}
+
+func (c *imagesNormalController) ID() imagesMode {
+	return imagesModeNormal
 }
 
 func (c *imagesNormalController) Title(p imagesPage) string {
@@ -64,6 +69,10 @@ var _ imagesModeController = (*imagesDeleteController)(nil)
 
 func newImagesDeleteController() imagesModeController {
 	return &imagesDeleteController{}
+}
+
+func (c *imagesDeleteController) ID() imagesMode {
+	return imagesModeDelete
 }
 
 func (c *imagesDeleteController) Title(p imagesPage) string {
