@@ -8,11 +8,28 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/yuasalily/kontenaut/internal/infra/engine"
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
 const confirmDeleteImages ConfirmID = "images:delete"
+
+type imagesMode int
+
+const (
+	imagesModeNormal imagesMode = iota
+	imagesModeDelete
+)
+
+type imagesModeSpec struct {
+	title        func(p imagesPage) string
+	columns      func(width int) []table.Column
+	newTable     func() table.Model
+	footerKeys   func(p imagesPage) []key.Binding
+	handleKey    func(p imagesPage, msg tea.KeyMsg) (imagesPage, tea.Cmd, bool)
+	rowsForTable func(p imagesPage) []table.Row
+}
 
 // imagesPage renders the Images list and destructive actions (delete).
 //
@@ -21,6 +38,8 @@ const confirmDeleteImages ConfirmID = "images:delete"
 // - UI concerns (selection, confirmation) live here; usecases perform operations.
 type imagesPage struct {
 	imageUC *usecase.ImageUsecase
+
+	mode imagesMode
 
 	loading  bool
 	deleting bool
@@ -34,6 +53,7 @@ type imagesPage struct {
 
 	selected map[string]struct{}
 	locked   map[string]struct{}
+	busy     map[string]struct{}
 
 	pendingDeleteIDs []string
 
@@ -47,10 +67,12 @@ var _ Page = imagesPage{}
 func newImagesPage(gkm globalKeyMap, imageUC *usecase.ImageUsecase) Page {
 	return imagesPage{
 		imageUC:     imageUC,
+		mode:        imagesModeNormal,
 		loading:     true,
-		imagesTable: newImagesTable(),
+		imagesTable: newImagesTableNormal(),
 		selected:    map[string]struct{}{},
 		locked:      map[string]struct{}{},
+		busy:        map[string]struct{}{},
 		gkm:         gkm,
 		km:          newImagesKeyMap(),
 	}
@@ -118,6 +140,61 @@ func deleteImagesCmd(imagesUC *usecase.ImageUsecase, ids []string) tea.Cmd {
 	}
 }
 
+func (p imagesPage) modeSpec() imagesModeSpec {
+	switch p.mode {
+	case imagesModeDelete:
+		return imagesModeSpec{
+			title: func(p imagesPage) string {
+				return lipgloss.NewStyle().Bold(true).Render("Images [DELETE MODE]")
+			},
+			columns:  columnsForImagesDeleteWidth,
+			newTable: newImagesTableDelete,
+			footerKeys: func(p imagesPage) []key.Binding {
+				return []key.Binding{
+					p.imagesTable.KeyMap.LineUp,
+					p.imagesTable.KeyMap.LineDown,
+					p.km.Select,
+					p.km.Execute,
+					p.km.Exit,
+					p.km.Refresh,
+					p.gkm.Quit,
+				}
+			},
+			handleKey: func(p imagesPage, msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
+				return p.handleKeyDelete(msg)
+			},
+			rowsForTable: func(p imagesPage) []table.Row {
+				return rowsFromImageSummariesDelete(p.images, p.imagesTable.Columns(), p.selected, p.locked, p.busy)
+			},
+		}
+
+	default:
+		return imagesModeSpec{
+			title: func(p imagesPage) string {
+				return "Images"
+			},
+			columns:  columnsForImagesNormalWidth,
+			newTable: newImagesTableNormal,
+			footerKeys: func(p imagesPage) []key.Binding {
+				return []key.Binding{
+					p.imagesTable.KeyMap.LineUp,
+					p.imagesTable.KeyMap.LineDown,
+					p.km.DeleteSingle,
+					p.km.EnterDeleteMode,
+					p.km.Refresh,
+					p.gkm.Quit,
+				}
+			},
+			handleKey: func(p imagesPage, msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
+				return p.handleKeyNormal(msg)
+			},
+			rowsForTable: func(p imagesPage) []table.Row {
+				return rowsFromImageSummariesNormal(p.images, p.imagesTable.Columns())
+			},
+		}
+	}
+}
+
 func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -134,7 +211,7 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case imagesLoadedMsg:
 		p = p.setIdle()
 		p.images = []engine.ImageSummary(msg)
-		p.imagesTable.SetRows(rowsFromImageSummaries(p.images, p.imagesTable.Columns(), p.selected, p.locked))
+		p.imagesTable.SetRows(p.modeSpec().rowsForTable(p))
 		return p, nil
 
 	case imagesLoadFailedMsg:
@@ -144,7 +221,7 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case lockedImagesLoadedMsg:
 		p.locked = map[string]struct{}(msg)
 		if len(p.images) > 0 {
-			p.imagesTable.SetRows(rowsFromImageSummaries(p.images, p.imagesTable.Columns(), p.selected, p.locked))
+			p.imagesTable.SetRows(p.modeSpec().rowsForTable(p))
 		}
 		return p, nil
 
@@ -163,12 +240,15 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			return p, nil
 		}
 		p.deleting = true
+		p.busy = toIDSet(ids)
 		return p, deleteImagesCmd(p.imageUC, ids)
 
 	case imagesDeletedMsg:
 		p.deleting = false
 		p.loading = true
 		p.selected = map[string]struct{}{}
+		p.locked = map[string]struct{}{}
+		p.busy = map[string]struct{}{}
 
 		var dlt tea.Cmd
 		if msg.failed == 0 {
@@ -197,18 +277,10 @@ func (p imagesPage) View() string {
 		return "Deleting..."
 	}
 	var b strings.Builder
-	b.WriteString("Images\n")
+	b.WriteString(p.modeSpec().title(p) + "\n")
 
 	b.WriteString(p.imagesTable.View())
-	footer := renderHelpBlock(
-		p.width,
-		p.imagesTable.KeyMap.LineUp,
-		p.imagesTable.KeyMap.LineDown,
-		p.km.Select,
-		p.km.Delete,
-		p.km.Refresh,
-		p.gkm.Quit,
-	)
+	footer := renderHelpBlock(p.width, p.modeSpec().footerKeys(p)...)
 	if footer != "" {
 		b.WriteString("\n" + footer + "\n")
 	}
@@ -220,13 +292,53 @@ func (p imagesPage) handleKey(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
 		return p, nil, false
 	}
 
+	return p.modeSpec().handleKey(p, msg)
+}
+
+func (p imagesPage) handleKeyNormal(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, p.km.Refresh):
+		// Refresh keeps mode; selection is cleared.
 		p.loading = true
 		p.selected = map[string]struct{}{}
 		p.locked = map[string]struct{}{}
+		p.busy = map[string]struct{}{}
 		p.pendingDeleteIDs = nil
 		return p, p.Init(), true
+
+	case key.Matches(msg, p.km.EnterDeleteMode):
+		p = p.switchMode(imagesModeDelete)
+		return p, nil, true
+
+	case key.Matches(msg, p.km.DeleteSingle):
+		id, ok := p.cursorImageID()
+		if !ok {
+			return p, nil, true
+		}
+		if p.isLocked(id) {
+			return p, openDialogCmd(dialogInfo, "Images", "this image is in use and cannot be deleted."), true
+		}
+		p.pendingDeleteIDs = []string{id}
+		return p, openConfirmDialogCmd(confirmDeleteImages, "Images", "Delete 1 image?"), true
+	}
+
+	return p, nil, false
+}
+
+func (p imagesPage) handleKeyDelete(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
+	switch {
+	case key.Matches(msg, p.km.Refresh):
+		// Refresh keeps delete mode; selection is cleared.
+		p.loading = true
+		p.selected = map[string]struct{}{}
+		p.locked = map[string]struct{}{}
+		p.busy = map[string]struct{}{}
+		p.pendingDeleteIDs = nil
+		return p, p.Init(), true
+
+	case key.Matches(msg, p.km.Exit):
+		p = p.switchMode(imagesModeNormal)
+		return p, nil, true
 
 	case key.Matches(msg, p.km.Select):
 		id, ok := p.cursorImageID()
@@ -234,22 +346,21 @@ func (p imagesPage) handleKey(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
 			return p, nil, true
 		}
 		if p.isLocked(id) {
-			// Why no-op:
-			// - Locked images are in use by containers and deletion would fail.
-			// - Skipping selection avoids noisy error dialogs.
+			// Locked images are not selectable/deletable.
 			return p, nil, true
 		}
 		p.toggleSelected(id)
-		p.imagesTable.SetRows(rowsFromImageSummaries(p.images, p.imagesTable.Columns(), p.selected, p.locked))
+		p.imagesTable.SetRows(p.modeSpec().rowsForTable(p))
 		return p, nil, true
 
-	case key.Matches(msg, p.km.Delete):
+	case key.Matches(msg, p.km.Execute):
 		ids := p.selectedDeletableIDs()
 		if len(ids) == 0 {
-			return p, openDialogCmd(dialogInfo, "Images", "No images selected"), true
+			// Spec: do nothing when none selected.
+			return p, nil, true
 		}
 		p.pendingDeleteIDs = ids
-		body := fmt.Sprintf("Delete %d image(s)?", len(ids))
+		body := fmt.Sprintf("Delete %d image(s)", len(ids))
 		return p, openConfirmDialogCmd(confirmDeleteImages, "Images", body), true
 	}
 
@@ -265,27 +376,56 @@ func (p imagesPage) applyTableLayout() imagesPage {
 	p.imagesTable.SetWidth(p.width)
 	p.imagesTable.SetHeight(tableHeight)
 
-	// Why dynamic columns:
-	// - Terminal width varies widely; allocate remaining space to REPO:TAG for readability.
-	cols := columnsForImagesWidth(p.width)
-	p.imagesTable.SetColumns(cols)
-	if len(p.images) > 0 {
-		p.imagesTable.SetRows(rowsFromImageSummaries(p.images, cols, p.selected, p.locked))
-	}
+	// Always apply mode-specific columns/rows.
+	// Why:
+	// - Even when there are no items, mode changes should be reflected immediately (e.g. SEL column).
+	p.imagesTable.SetColumns(p.modeSpec().columns(p.width))
+	p.imagesTable.SetRows(p.modeSpec().rowsForTable(p))
 	return p
 }
 
-func newImagesTable() table.Model {
-	cols := columnsForImagesWidth(0)
-	t := table.New(
+func newImagesTableNormal() table.Model {
+	cols := columnsForImagesNormalWidth(0)
+	return table.New(
 		table.WithColumns(cols),
 		table.WithRows(nil),
 		table.WithFocused(true),
 	)
-	return t
 }
 
-func columnsForImagesWidth(total int) []table.Column {
+func newImagesTableDelete() table.Model {
+	cols := columnsForImagesDeleteWidth(0)
+	return table.New(
+		table.WithColumns(cols),
+		table.WithRows(nil),
+		table.WithFocused(true),
+	)
+}
+
+func columnsForImagesNormalWidth(total int) []table.Column {
+	const (
+		idW      = 12
+		sizeW    = 10
+		createdW = 12
+	)
+
+	repoW := 24
+	if total > 0 {
+		rest := total - (idW + sizeW + createdW) - 6
+		if rest > repoW {
+			repoW = rest
+		}
+	}
+
+	return []table.Column{
+		{Title: "ID", Width: idW},
+		{Title: "REPO:TAG", Width: repoW},
+		{Title: "SIZE", Width: sizeW},
+		{Title: "CREATED", Width: createdW},
+	}
+}
+
+func columnsForImagesDeleteWidth(total int) []table.Column {
 	const (
 		selW     = 4
 		idW      = 12
@@ -310,7 +450,43 @@ func columnsForImagesWidth(total int) []table.Column {
 	}
 }
 
-func rowsFromImageSummaries(items []engine.ImageSummary, cols []table.Column, selected map[string]struct{}, locked map[string]struct{}) []table.Row {
+func rowsFromImageSummariesNormal(items []engine.ImageSummary, cols []table.Column) []table.Row {
+	getW := func(i int, fallback int) int {
+		if i < 0 || i >= len(cols) {
+			return fallback
+		}
+		return cols[i].Width
+	}
+
+	idW := getW(0, 12)
+	repoW := getW(1, 24)
+	sizeW := getW(2, 10)
+	createdW := getW(3, 12)
+
+	out := make([]table.Row, 0, len(items))
+	for _, img := range items {
+		// Why trim sha256 prefix:
+		// - Docker image IDs are long; trimming improves table readability.
+		// - The remaining prefix is typically sufficient for identification in UI.
+		displayID := strings.TrimPrefix(img.ID, "sha256:")
+		row := table.Row{
+			truncImage(displayID, idW),
+			truncImage(img.RepoTags, repoW),
+			truncImage(img.Size, sizeW),
+			truncImage(img.CreatedAt, createdW),
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func rowsFromImageSummariesDelete(
+	items []engine.ImageSummary,
+	cols []table.Column,
+	selected map[string]struct{},
+	locked map[string]struct{},
+	busy map[string]struct{},
+) []table.Row {
 	getW := func(i int, fallback int) int {
 		if i < 0 || i >= len(cols) {
 			return fallback
@@ -331,7 +507,10 @@ func rowsFromImageSummaries(items []engine.ImageSummary, cols []table.Column, se
 			sel = "[#]"
 		} else if _, ok := selected[img.ID]; ok {
 			sel = "[x]"
+		} else if _, ok := busy[img.ID]; ok {
+			sel = "[x]"
 		}
+
 		// Why trim sha256 prefix:
 		// - Docker image IDs are long; trimming improves table readability.
 		// - The remaining prefix is typically sufficient for identification in UI.
@@ -400,4 +579,40 @@ func (p imagesPage) setIdle() imagesPage {
 	p.loading = false
 	p.deleting = false
 	return p
+}
+
+func (p imagesPage) switchMode(to imagesMode) imagesPage {
+	if p.mode == to {
+		return p
+	}
+
+	oldCursor := p.imagesTable.Cursor()
+
+	// Clear mode-related transient state.
+	p.selected = map[string]struct{}{}
+	p.pendingDeleteIDs = nil
+	p.busy = map[string]struct{}{}
+
+	p.mode = to
+	p.imagesTable = p.modeSpec().newTable()
+	p = p.applyTableLayout()
+
+	// Restore cursor within bounds.
+	hi := 0
+	if len(p.images) > 0 {
+		hi = len(p.images) - 1
+	}
+	p.imagesTable.SetCursor(max(0, min(oldCursor, hi)))
+	return p
+}
+
+func toIDSet(ids []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		out[id] = struct{}{}
+	}
+	return out
 }
