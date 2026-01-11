@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
@@ -59,7 +61,30 @@ func (c *imagesNormalController) Rows(p imagesPage) []table.Row {
 }
 
 func (c *imagesNormalController) HandleKey(p imagesPage, msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
-	return p.handleKeyNormal(msg)
+	switch {
+	case key.Matches(msg, p.km.Refresh):
+		// Refresh keeps mode; selection is cleared.
+		p.loading = true
+		p = p.resetTransientState(true)
+		return p, p.Init(), true
+
+	case key.Matches(msg, p.km.EnterDeleteMode):
+		p = p.switchMode(imagesModeDelete)
+		return p, nil, true
+
+	case key.Matches(msg, p.km.DeleteSingle):
+		id, ok := p.cursorImageID()
+		if !ok {
+			return p, nil, true
+		}
+		if p.isLocked(id) {
+			return p, openDialogCmd(dialogInfo, "Images", "this image is in use and cannot be deleted."), true
+		}
+		p.pendingDeleteIDs = []string{id}
+		return p, openConfirmDialogCmd(confirmDeleteImages, "Images", "Delete 1 image?"), true
+	}
+
+	return p, nil, false
 }
 
 type imagesDeleteController struct{}
@@ -104,5 +129,40 @@ func (c *imagesDeleteController) Rows(p imagesPage) []table.Row {
 }
 
 func (c *imagesDeleteController) HandleKey(p imagesPage, msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
-	return p.handleKeyDelete(msg)
+	switch {
+	case key.Matches(msg, p.km.Refresh):
+		// Refresh keeps delete mode; selection is cleared.
+		p.loading = true
+		p = p.resetTransientState(true)
+		return p, p.Init(), true
+
+	case key.Matches(msg, p.km.Exit):
+		p = p.switchMode(imagesModeNormal)
+		return p, nil, true
+
+	case key.Matches(msg, p.km.Select):
+		id, ok := p.cursorImageID()
+		if !ok {
+			return p, nil, true
+		}
+		if p.isLocked(id) {
+			// Locked images are not selectable/deletable.
+			return p, nil, true
+		}
+		p.toggleSelected(id)
+		p.imagesTable.SetRows(p.rowsForMode())
+		return p, nil, true
+
+	case key.Matches(msg, p.km.Execute):
+		ids := p.selectedDeletableIDs()
+		if len(ids) == 0 {
+			// Spec: do nothing when none selected.
+			return p, nil, true
+		}
+		p.pendingDeleteIDs = ids
+		body := fmt.Sprintf("Delete %d image(s)", len(ids))
+		return p, openConfirmDialogCmd(confirmDeleteImages, "Images", body), true
+	}
+
+	return p, nil, false
 }
