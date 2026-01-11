@@ -29,8 +29,6 @@ const (
 type imagesPage struct {
 	imageUC *usecase.ImageUsecase
 
-	mode imagesMode
-
 	// ctrl is the controller for the current mode.
 	ctrl imagesModeController
 
@@ -60,7 +58,6 @@ var _ Page = imagesPage{}
 func newImagesPage(gkm globalKeyMap, imageUC *usecase.ImageUsecase) Page {
 	return imagesPage{
 		imageUC:     imageUC,
-		mode:        imagesModeNormal,
 		ctrl:        newImagesNormalController(),
 		loading:     true,
 		imagesTable: newImagesTableNormal(),
@@ -209,9 +206,7 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case imagesDeletedMsg:
 		p.deleting = false
 		p.loading = true
-		p.selected = map[string]struct{}{}
-		p.locked = map[string]struct{}{}
-		p.busy = map[string]struct{}{}
+		p = p.resetTransientState(true)
 
 		var dlt tea.Cmd
 		if msg.failed == 0 {
@@ -263,10 +258,7 @@ func (p imagesPage) handleKeyNormal(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) 
 	case key.Matches(msg, p.km.Refresh):
 		// Refresh keeps mode; selection is cleared.
 		p.loading = true
-		p.selected = map[string]struct{}{}
-		p.locked = map[string]struct{}{}
-		p.busy = map[string]struct{}{}
-		p.pendingDeleteIDs = nil
+		p = p.resetTransientState(true)
 		return p, p.Init(), true
 
 	case key.Matches(msg, p.km.EnterDeleteMode):
@@ -293,10 +285,7 @@ func (p imagesPage) handleKeyDelete(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) 
 	case key.Matches(msg, p.km.Refresh):
 		// Refresh keeps delete mode; selection is cleared.
 		p.loading = true
-		p.selected = map[string]struct{}{}
-		p.locked = map[string]struct{}{}
-		p.busy = map[string]struct{}{}
-		p.pendingDeleteIDs = nil
+		p = p.resetTransientState(true)
 		return p, p.Init(), true
 
 	case key.Matches(msg, p.km.Exit):
@@ -538,6 +527,17 @@ func (p imagesPage) selectedDeletableIDs() []string {
 	return out
 }
 
+// resetTransientState clears in-memory transient state for Images page.
+func (p imagesPage) resetTransientState(clearLocked bool) imagesPage {
+	p.selected = map[string]struct{}{}
+	p.pendingDeleteIDs = nil
+	p.busy = map[string]struct{}{}
+	if clearLocked {
+		p.locked = map[string]struct{}{}
+	}
+	return p
+}
+
 func (p imagesPage) setIdle() imagesPage {
 	p.loading = false
 	p.deleting = false
@@ -554,18 +554,15 @@ func newImagesController(mode imagesMode) imagesModeController {
 }
 
 func (p imagesPage) switchMode(to imagesMode) imagesPage {
-	if p.mode == to {
+	if p.ctrl != nil && p.ctrl.ID() == to {
 		return p
 	}
 
 	oldCursor := p.imagesTable.Cursor()
 
 	// Clear mode-related transient state.
-	p.selected = map[string]struct{}{}
-	p.pendingDeleteIDs = nil
-	p.busy = map[string]struct{}{}
+	p = p.resetTransientState(false)
 
-	p.mode = to
 	p.ctrl = newImagesController(to)
 	p.imagesTable = p.ctrl.NewTable()
 	p = p.applyTableLayout()
