@@ -41,6 +41,9 @@ type imagesPage struct {
 
 	mode imagesMode
 
+	// ctrl is the controller for the current mode.
+	ctrl imagesModeController
+
 	loading  bool
 	deleting bool
 
@@ -68,6 +71,7 @@ func newImagesPage(gkm globalKeyMap, imageUC *usecase.ImageUsecase) Page {
 	return imagesPage{
 		imageUC:     imageUC,
 		mode:        imagesModeNormal,
+		ctrl:        newImagesNormalController(),
 		loading:     true,
 		imagesTable: newImagesTableNormal(),
 		selected:    map[string]struct{}{},
@@ -195,6 +199,48 @@ func (p imagesPage) modeSpec() imagesModeSpec {
 	}
 }
 
+func (p imagesPage) currentController() imagesModeController {
+	if p.mode != imagesModeNormal {
+		return nil
+	}
+	return p.ctrl
+}
+
+func (p imagesPage) titleForMode() string {
+	if c := p.currentController(); c != nil {
+		return c.Title(p)
+	}
+	return p.modeSpec().title(p)
+}
+
+func (p imagesPage) columnsForMode(width int) []table.Column {
+	if c := p.currentController(); c != nil {
+		return c.Columns(width)
+	}
+	return p.modeSpec().columns(width)
+}
+
+func (p imagesPage) footerKeysForMode() []key.Binding {
+	if c := p.currentController(); c != nil {
+		return c.FooterKeys(p)
+	}
+	return p.modeSpec().footerKeys(p)
+}
+
+func (p imagesPage) rowsForMode() []table.Row {
+	if c := p.currentController(); c != nil {
+		return c.Rows(p)
+	}
+	return p.modeSpec().rowsForTable(p)
+}
+
+func (p imagesPage) handleKeyForMode(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
+	if c := p.currentController(); c != nil {
+		return c.HandleKey(p, msg)
+	}
+	return p.modeSpec().handleKey(p, msg)
+}
+
 func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -211,7 +257,7 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case imagesLoadedMsg:
 		p = p.setIdle()
 		p.images = []engine.ImageSummary(msg)
-		p.imagesTable.SetRows(p.modeSpec().rowsForTable(p))
+		p.imagesTable.SetRows(p.rowsForMode())
 		return p, nil
 
 	case imagesLoadFailedMsg:
@@ -221,7 +267,7 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case lockedImagesLoadedMsg:
 		p.locked = map[string]struct{}(msg)
 		if len(p.images) > 0 {
-			p.imagesTable.SetRows(p.modeSpec().rowsForTable(p))
+			p.imagesTable.SetRows(p.rowsForMode())
 		}
 		return p, nil
 
@@ -277,10 +323,10 @@ func (p imagesPage) View() string {
 		return "Deleting..."
 	}
 	var b strings.Builder
-	b.WriteString(p.modeSpec().title(p) + "\n")
+	b.WriteString(p.titleForMode() + "\n")
 
 	b.WriteString(p.imagesTable.View())
-	footer := renderHelpBlock(p.width, p.modeSpec().footerKeys(p)...)
+	footer := renderHelpBlock(p.width, p.footerKeysForMode()...)
 	if footer != "" {
 		b.WriteString("\n" + footer + "\n")
 	}
@@ -292,7 +338,7 @@ func (p imagesPage) handleKey(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
 		return p, nil, false
 	}
 
-	return p.modeSpec().handleKey(p, msg)
+	return p.handleKeyForMode(msg)
 }
 
 func (p imagesPage) handleKeyNormal(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
@@ -350,7 +396,7 @@ func (p imagesPage) handleKeyDelete(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) 
 			return p, nil, true
 		}
 		p.toggleSelected(id)
-		p.imagesTable.SetRows(p.modeSpec().rowsForTable(p))
+		p.imagesTable.SetRows(p.rowsForMode())
 		return p, nil, true
 
 	case key.Matches(msg, p.km.Execute):
@@ -379,8 +425,8 @@ func (p imagesPage) applyTableLayout() imagesPage {
 	// Always apply mode-specific columns/rows.
 	// Why:
 	// - Even when there are no items, mode changes should be reflected immediately (e.g. SEL column).
-	p.imagesTable.SetColumns(p.modeSpec().columns(p.width))
-	p.imagesTable.SetRows(p.modeSpec().rowsForTable(p))
+	p.imagesTable.SetColumns(p.columnsForMode(p.width))
+	p.imagesTable.SetRows(p.rowsForMode())
 	return p
 }
 
