@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/yuasalily/kontenaut/internal/infra/engine"
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
@@ -21,15 +20,6 @@ const (
 	imagesModeNormal imagesMode = iota
 	imagesModeDelete
 )
-
-type imagesModeSpec struct {
-	title        func(p imagesPage) string
-	columns      func(width int) []table.Column
-	newTable     func() table.Model
-	footerKeys   func(p imagesPage) []key.Binding
-	handleKey    func(p imagesPage, msg tea.KeyMsg) (imagesPage, tea.Cmd, bool)
-	rowsForTable func(p imagesPage) []table.Row
-}
 
 // imagesPage renders the Images list and destructive actions (delete).
 //
@@ -144,101 +134,28 @@ func deleteImagesCmd(imagesUC *usecase.ImageUsecase, ids []string) tea.Cmd {
 	}
 }
 
-func (p imagesPage) modeSpec() imagesModeSpec {
-	switch p.mode {
-	case imagesModeDelete:
-		return imagesModeSpec{
-			title: func(p imagesPage) string {
-				return lipgloss.NewStyle().Bold(true).Render("Images [DELETE MODE]")
-			},
-			columns:  columnsForImagesDeleteWidth,
-			newTable: newImagesTableDelete,
-			footerKeys: func(p imagesPage) []key.Binding {
-				return []key.Binding{
-					p.imagesTable.KeyMap.LineUp,
-					p.imagesTable.KeyMap.LineDown,
-					p.km.Select,
-					p.km.Execute,
-					p.km.Exit,
-					p.km.Refresh,
-					p.gkm.Quit,
-				}
-			},
-			handleKey: func(p imagesPage, msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
-				return p.handleKeyDelete(msg)
-			},
-			rowsForTable: func(p imagesPage) []table.Row {
-				return rowsFromImageSummariesDelete(p.images, p.imagesTable.Columns(), p.selected, p.locked, p.busy)
-			},
-		}
-
-	default:
-		return imagesModeSpec{
-			title: func(p imagesPage) string {
-				return "Images"
-			},
-			columns:  columnsForImagesNormalWidth,
-			newTable: newImagesTableNormal,
-			footerKeys: func(p imagesPage) []key.Binding {
-				return []key.Binding{
-					p.imagesTable.KeyMap.LineUp,
-					p.imagesTable.KeyMap.LineDown,
-					p.km.DeleteSingle,
-					p.km.EnterDeleteMode,
-					p.km.Refresh,
-					p.gkm.Quit,
-				}
-			},
-			handleKey: func(p imagesPage, msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
-				return p.handleKeyNormal(msg)
-			},
-			rowsForTable: func(p imagesPage) []table.Row {
-				return rowsFromImageSummariesNormal(p.images, p.imagesTable.Columns())
-			},
-		}
-	}
-}
-
 func (p imagesPage) currentController() imagesModeController {
-	if p.mode != imagesModeNormal {
-		return nil
-	}
 	return p.ctrl
 }
 
 func (p imagesPage) titleForMode() string {
-	if c := p.currentController(); c != nil {
-		return c.Title(p)
-	}
-	return p.modeSpec().title(p)
+	return p.currentController().Title(p)
 }
 
 func (p imagesPage) columnsForMode(width int) []table.Column {
-	if c := p.currentController(); c != nil {
-		return c.Columns(width)
-	}
-	return p.modeSpec().columns(width)
+	return p.currentController().Columns(width)
 }
 
 func (p imagesPage) footerKeysForMode() []key.Binding {
-	if c := p.currentController(); c != nil {
-		return c.FooterKeys(p)
-	}
-	return p.modeSpec().footerKeys(p)
+	return p.currentController().FooterKeys(p)
 }
 
 func (p imagesPage) rowsForMode() []table.Row {
-	if c := p.currentController(); c != nil {
-		return c.Rows(p)
-	}
-	return p.modeSpec().rowsForTable(p)
+	return p.currentController().Rows(p)
 }
 
 func (p imagesPage) handleKeyForMode(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
-	if c := p.currentController(); c != nil {
-		return c.HandleKey(p, msg)
-	}
-	return p.modeSpec().handleKey(p, msg)
+	return p.currentController().HandleKey(p, msg)
 }
 
 func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
@@ -627,6 +544,15 @@ func (p imagesPage) setIdle() imagesPage {
 	return p
 }
 
+func newImagesController(mode imagesMode) imagesModeController {
+	switch mode {
+	case imagesModeDelete:
+		return newImagesDeleteController()
+	default:
+		return newImagesNormalController()
+	}
+}
+
 func (p imagesPage) switchMode(to imagesMode) imagesPage {
 	if p.mode == to {
 		return p
@@ -640,7 +566,8 @@ func (p imagesPage) switchMode(to imagesMode) imagesPage {
 	p.busy = map[string]struct{}{}
 
 	p.mode = to
-	p.imagesTable = p.modeSpec().newTable()
+	p.ctrl = newImagesController(to)
+	p.imagesTable = p.ctrl.NewTable()
 	p = p.applyTableLayout()
 
 	// Restore cursor within bounds.
