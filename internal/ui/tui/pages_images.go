@@ -3,9 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yuasalily/kontenaut/internal/infra/engine"
@@ -14,33 +14,35 @@ import (
 
 const confirmDeleteImages ConfirmID = "images:delete"
 
-type imagesMode int
+// imagesModeID identifies Images UI modes.
+// What: Normal / Delete
+// Why: The spec defines behavior, keys and SEL column visibility by mode.
+type imagesModeID int
 
 const (
-	imagesModeNormal imagesMode = iota
+	imagesModeNormal imagesModeID = iota
 	imagesModeDelete
 )
 
-// imagesPage renders the Images list and destructive actions (delete).
-//
-// Why:
-// - Docker prevents deleting images in use; we compute "locked" to prevent noisy errors.
-// - UI concerns (selection, confirmation) live here; usecases perform operations.
-type imagesPage struct {
-	imageUC *usecase.ImageUsecase
+// imagesCtx holds dependencies and environment for the Images page.
+// Why: Keep modes pure-ish (no direct usecase calls) and make wiring explicit.
+type imagesCtx struct {
+	uc *usecase.ImageUsecase
 
-	// ctrl is the controller for the current mode.
-	ctrl imagesModeController
-
-	loading  bool
-	deleting bool
-
-	images []engine.ImageSummary
+	gkm globalKeyMap
+	km  imagesKeyMap
 
 	width  int
 	height int
+}
 
-	imagesTable table.Model
+// imageState is the shared state for Images page and its modes.
+//
+// Why:
+// - Keep all mutable state in one place (router-owned).
+// - Modes read/update state, router performs side effects via actions.
+type imagesState struct {
+	items []engine.ImageSummary
 
 	selected map[string]struct{}
 	locked   map[string]struct{}
@@ -48,31 +50,149 @@ type imagesPage struct {
 
 	pendingDeleteIDs []string
 
-	gkm globalKeyMap
-	km  imagesKeyMap
+	// op aggregates results for an in-flight delete session.
+	op imagesDeleteOpState
+
+	table table.Model
+	mode  imagesMode
+}
+
+// imagesDeleteOpState tracks a single delete execution session.
+//
+// Why:
+// - We want row-level busy feedback (per-item completion) without freezing the whole page.
+// - Bubble Tea commands return a single Msg, so we stream per-item completion via a channel.
+type imagesDeleteOpState struct {
+	inFlight bool
+	cancel   context.CancelFunc
+	ch       <-chan imagesDeleteEvent
+
+	total    int
+	done     int
+	ok       int
+	skipped  int
+	failed   int
+	firstErr error
+}
+
+// imagesDeleteEvent is emitted per deleted images (success or failure).
+type imagesDeleteEvent struct {
+	id  string
+	err error
+}
+
+type imagesDeleteStartedMsg struct {
+	cancel  context.CancelFunc
+	ch      <-chan imagesDeleteEvent
+	total   int
+	skipped int
+}
+
+type imagesDeleteStartFailedMsg struct{ err error }
+
+type imagesDeleteEventReceivedMsg struct {
+	ev imagesDeleteEvent
+	ok bool
+}
+
+func startDeleteImagesCmd(imageUC *usecase.ImageUsecase, ids []string, skipped int) tea.Cmd {
+	return func() tea.Msg {
+		if imageUC == nil {
+			return imagesDeleteStartFailedMsg{err: fmt.Errorf("image usecase is nil")}
+		}
+		if len(ids) == 0 {
+			// Spec: do nothing when none selected.
+			return imagesDeleteStartFailedMsg{err: fmt.Errorf("no ids to delete")}
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		ch := make(chan imagesDeleteEvent, 64)
+
+		go func() {
+			defer close(ch)
+			for _, id := range ids {
+				// Best-effort: stop quickly if the page navigated away.
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				err := imageUC.Delete(context.Background(), id)
+				ev := imagesDeleteEvent{id: id, err: err}
+				select {
+				case ch <- ev:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+
+		return imagesDeleteStartedMsg{
+			cancel:  cancel,
+			ch:      ch,
+			total:   len(ids),
+			skipped: skipped,
+		}
+	}
+}
+
+func waitNextDeleteEventCmd(ch <-chan imagesDeleteEvent) tea.Cmd {
+	return func() tea.Msg {
+		if ch == nil {
+			return imagesDeleteStartFailedMsg{err: fmt.Errorf("delete event channel is nil")}
+		}
+		ev, ok := <-ch
+		return imagesDeleteEventReceivedMsg{ev: ev, ok: ok}
+	}
+}
+
+// imagesPage is a mode router for Images.
+//
+// Why mode router:
+// - The spec is explicit about mode-based behavior (SEL column, enter=execute, key meanings).
+// - Containers will gain more modes; this structure scales by adding submodels.
+
+type imagesPage struct {
+	ctx imagesCtx
+	st  imagesState
+
+	// loading is used only before the first list load.
+	// Why: keep the UI responsive during refresh and while opts are running.
+	loading bool
 }
 
 // compile-time interface check
 var _ Page = imagesPage{}
+var _ PageCloser = imagesPage{}
 
 func newImagesPage(gkm globalKeyMap, imageUC *usecase.ImageUsecase) Page {
-	return imagesPage{
-		imageUC:     imageUC,
-		ctrl:        newImagesNormalController(),
-		loading:     true,
-		imagesTable: newImagesTableNormal(),
-		selected:    map[string]struct{}{},
-		locked:      map[string]struct{}{},
-		busy:        map[string]struct{}{},
-		gkm:         gkm,
-		km:          newImagesKeyMap(),
+	p := imagesPage{
+		ctx: imagesCtx{
+			uc:  imageUC,
+			gkm: gkm,
+			km:  newImagesKeyMap(),
+		},
+		st: imagesState{
+			selected: map[string]struct{}{},
+			locked:   map[string]struct{}{},
+			busy:     map[string]struct{}{},
+			table: table.New(
+				table.WithColumns(nil),
+				table.WithRows(nil),
+				table.WithFocused(true),
+			),
+			mode: newImagesNormalMode(),
+		},
+		loading: true,
 	}
+	return p
 }
 
 func (p imagesPage) Init() tea.Cmd {
 	return tea.Batch(
-		listImagesCmd(p.imageUC),
-		listLockedImagesCmd(p.imageUC),
+		listImagesCmd(p.ctx.uc),
+		listLockedImagesCmd(p.ctx.uc),
 	)
 }
 
@@ -102,87 +222,26 @@ func listLockedImagesCmd(imageUC *usecase.ImageUsecase) tea.Cmd {
 	}
 }
 
-type imagesDeletedMsg struct {
-	deleted  int
-	failed   int
-	firstErr error
-}
-
-func deleteImagesCmd(imagesUC *usecase.ImageUsecase, ids []string) tea.Cmd {
-	return func() tea.Msg {
-		deleted := 0
-		failed := 0
-		var firstErr error
-		for _, id := range ids {
-			if err := imagesUC.Delete(context.Background(), id); err != nil {
-				failed++
-				if firstErr == nil {
-					firstErr = err
-				}
-				continue
-			}
-			deleted++
-		}
-		return imagesDeletedMsg{
-			deleted:  deleted,
-			failed:   failed,
-			firstErr: firstErr,
-		}
-	}
-}
-
-func (p imagesPage) currentController() imagesModeController {
-	return p.ctrl
-}
-
-func (p imagesPage) titleForMode() string {
-	return p.currentController().Title(p)
-}
-
-func (p imagesPage) columnsForMode(width int) []table.Column {
-	return p.currentController().Columns(width)
-}
-
-func (p imagesPage) footerKeysForMode() []key.Binding {
-	return p.currentController().FooterKeys(p)
-}
-
-func (p imagesPage) rowsForMode() []table.Row {
-	return p.currentController().Rows(p)
-}
-
-func (p imagesPage) handleKeyForMode(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
-	return p.currentController().HandleKey(p, msg)
-}
-
 func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		p.width, p.height = msg.Width, msg.Height
-		p = p.applyTableLayout()
+		p.ctx.width, p.ctx.height = msg.Width, msg.Height
+		p.applyTableLayout()
 		return p, nil
 
-	case tea.KeyMsg:
-		np, cmd, handled := p.handleKey(msg)
-		if handled {
-			return np, cmd
-		}
-
 	case imagesLoadedMsg:
-		p = p.setIdle()
-		p.images = []engine.ImageSummary(msg)
-		p.imagesTable.SetRows(p.rowsForMode())
+		p.loading = false
+		p.st.items = []engine.ImageSummary(msg)
+		p.rebuildTable()
 		return p, nil
 
 	case imagesLoadFailedMsg:
-		p = p.setIdle()
+		p.loading = false
 		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
 
 	case lockedImagesLoadedMsg:
-		p.locked = map[string]struct{}(msg)
-		if len(p.images) > 0 {
-			p.imagesTable.SetRows(p.rowsForMode())
-		}
+		p.st.locked = map[string]struct{}(msg)
+		p.rebuildTable()
 		return p, nil
 
 	case lockedImagesLoadFailedMsg:
@@ -193,37 +252,79 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			return p, nil
 		}
 
-		ids := p.pendingDeleteIDs
-		p.pendingDeleteIDs = nil
+		ids := p.st.pendingDeleteIDs
+		p.st.pendingDeleteIDs = nil
 
-		if !msg.ok || len(ids) == 0 {
+		if !msg.ok {
 			return p, nil
 		}
-		p.deleting = true
-		p.busy = toIDSet(ids)
-		return p, deleteImagesCmd(p.imageUC, ids)
 
-	case imagesDeletedMsg:
-		p.deleting = false
-		p.loading = true
-		p = p.resetTransientState(true)
-
-		var dlt tea.Cmd
-		if msg.failed == 0 {
-			dlt = openDialogCmd(dialogInfo, "Images", fmt.Sprintf("Deleted %d image(s)", msg.deleted))
-		} else {
-			body := fmt.Sprintf("Deleted %d image(s). Failed %d image(s).", msg.deleted, msg.failed)
-			if msg.firstErr != nil {
-				body = fmt.Sprintf("%s\n\n%s", body, msg.firstErr.Error())
-			}
-			dlt = openDialogCmd(dialogError, "Images", body)
+		// Revalidate at execution time:
+		// - lock state may change between selection and confirm resolution.
+		ids, skipped := p.deletableIDs(ids)
+		if len(ids) == 0 {
+			// Spec: do nothing when none selected / nothing deletable.
+			return p, nil
 		}
-		return p, tea.Sequence(tea.Batch(listImagesCmd(p.imageUC), listLockedImagesCmd(p.imageUC)), dlt)
 
+		// Start async delete:
+		// - mark all target rows busy immediately ([*])
+		// - clear selection per spec
+		p.setBusy(ids)
+		p.clearSelection()
+		p.rebuildTable()
+		return p, startDeleteImagesCmd(p.ctx.uc, ids, skipped)
+
+	case imagesDeleteStartedMsg:
+		p.st.op = imagesDeleteOpState{
+			inFlight: true,
+			cancel:   msg.cancel,
+			ch:       msg.ch,
+			total:    msg.total,
+			skipped:  msg.skipped,
+		}
+		return p, waitNextDeleteEventCmd(p.st.op.ch)
+
+	case imagesDeleteStartFailedMsg:
+		// If start fails, clear busy to avoid stuck UI.
+		p.clearBusy()
+		p.rebuildTable()
+		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
+
+	case imagesDeleteEventReceivedMsg:
+		if !p.st.op.inFlight {
+			return p, nil
+		}
+		if !msg.ok {
+			// Channel closed -> operation finished.
+			cmd := p.finishDeleteOp()
+			return p, cmd
+		}
+
+		// One item finished: clear row-level busy and update counters.
+		p.st.op.done++
+		if msg.ev.err != nil {
+			p.st.op.failed++
+			if p.st.op.firstErr == nil {
+				p.st.op.firstErr = msg.ev.err
+			}
+		} else {
+			p.st.op.ok++
+		}
+		p.unsetBusy(msg.ev.id)
+		p.rebuildTable()
+		return p, waitNextDeleteEventCmd(p.st.op.ch)
 	}
 
+	// Delegate to mode for key interpretation and mode-specific actions.
+	next, act, handled := p.st.mode.Update(p.ctx, &p.st, msg)
+	if handled {
+		return p, p.applyImagesAction(next, act)
+	}
+
+	// Let table handle cursor navigation etc.
 	var cmd tea.Cmd
-	p.imagesTable, cmd = p.imagesTable.Update(msg)
+	p.st.table, cmd = p.st.table.Update(msg)
 	return p, cmd
 }
 
@@ -231,63 +332,208 @@ func (p imagesPage) View() string {
 	if p.loading {
 		return "Loading..."
 	}
-	if p.deleting {
-		return "Deleting..."
-	}
-	var b strings.Builder
-	b.WriteString(p.titleForMode() + "\n")
 
-	b.WriteString(p.imagesTable.View())
-	footer := renderHelpBlock(p.width, p.footerKeysForMode()...)
+	var b strings.Builder
+	b.WriteString(p.st.mode.Title() + "\n")
+	b.WriteString(p.st.table.View())
+
+	footer := renderHelpBlock(p.ctx.width, p.st.mode.FooterKeys(p.ctx, &p.st)...)
 	if footer != "" {
 		b.WriteString("\n" + footer + "\n")
 	}
 	return b.String()
 }
 
-func (p imagesPage) handleKey(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
-	if p.loading || p.deleting {
-		return p, nil, false
+func (p *imagesPage) applyTableLayout() {
+	if p.ctx.width <= 0 || p.ctx.height <= 0 {
+		return
+	}
+	tableHeight := max(p.ctx.height-tableNonBodyRows, 1)
+	p.st.table.SetWidth(p.ctx.width)
+	p.st.table.SetHeight(tableHeight)
+	p.rebuildTable()
+}
+
+func (p *imagesPage) rebuildTable() {
+	cols := p.st.mode.Columns(p.ctx.width)
+	p.st.table.SetColumns(cols)
+	p.st.table.SetRows(p.st.mode.Rows(&p.st))
+}
+
+func (p imagesPage) applyImagesAction(next imagesMode, act imagesAction) tea.Cmd {
+	// Mode transition is owned by the router to keep it consistent.
+	if next != nil && next.ID() != p.st.mode.ID() {
+		// Spec/decision: selection is not preserved across mode changes.
+		p.clearSelection()
+		p.st.mode = next
+		p.rebuildTable()
 	}
 
-	return p.handleKeyForMode(msg)
-}
+	switch a := act.(type) {
+	case actNone:
+		return nil
 
-func (p imagesPage) applyTableLayout() imagesPage {
-	if p.width <= 0 || p.height <= 0 {
-		return p
+	case actRefresh:
+		// Decision: refresh clears selection (mode is kept).
+		p.clearSelection()
+		p.rebuildTable()
+		return tea.Batch(listImagesCmd(p.ctx.uc), listLockedImagesCmd(p.ctx.uc))
+
+	case actEnterDeleteMode:
+		// Transition already handled above.
+		return nil
+	case actExitMode:
+		// Transition already handled above.
+		return nil
+
+	case actToggleSelect:
+		p.toggleSelected(a.id)
+		p.rebuildTable()
+		return nil
+
+	case actExecuteDelete:
+		ids := p.sortedSelectedIDs()
+		if len(ids) == 0 {
+			// Spec: do nothing when none selected
+			return nil
+		}
+		// Confirm is required by spec (delete mode).
+		return p.openDeleteConfirm(ids)
+
+	case actRequestDelete:
+		// Normal 'd' also requires confirm (decision).
+		if len(a.ids) == 0 {
+			return nil
+		}
+		return p.openDeleteConfirm(a.ids)
+
+	default:
+		return nil
 	}
-	tableHeight := max(p.height-tableNonBodyRows, 1)
-
-	p.imagesTable.SetWidth(p.width)
-	p.imagesTable.SetHeight(tableHeight)
-
-	// Always apply mode-specific columns/rows.
-	// Why:
-	// - Even when there are no items, mode changes should be reflected immediately (e.g. SEL column).
-	p.imagesTable.SetColumns(p.columnsForMode(p.width))
-	p.imagesTable.SetRows(p.rowsForMode())
-	return p
 }
 
-func newImagesTableNormal() table.Model {
-	cols := columnsForImagesNormalWidth(0)
-	return table.New(
-		table.WithColumns(cols),
-		table.WithRows(nil),
-		table.WithFocused(true),
-	)
+func (p imagesPage) openDeleteConfirm(ids []string) tea.Cmd {
+	// Revalidate for better UX in normal mode:
+	// - Without SEL column, users can't see lock state easily.
+	ids, _ = p.deletableIDs(ids)
+	if len(ids) == 0 {
+		return openDialogCmd(dialogInfo, "Images", "No deletable images selected")
+	}
+
+	// Store pending ids so confirm resolution can start the operation.
+	p.st.pendingDeleteIDs = ids
+	body := fmt.Sprintf("Delete %d image(s)?", len(ids))
+	return openConfirmDialogCmd(confirmDeleteImages, "Images", body)
 }
 
-func newImagesTableDelete() table.Model {
-	cols := columnsForImagesDeleteWidth(0)
-	return table.New(
-		table.WithColumns(cols),
-		table.WithRows(nil),
-		table.WithFocused(true),
-	)
+func (p imagesPage) deletableIDs(in []string) (ids []string, skipped int) {
+	for _, id := range in {
+		if id == "" {
+			continue
+		}
+		if p.isBusy(id) || p.isLocked(id) {
+			skipped++
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids, skipped
 }
 
+func (p *imagesPage) finishDeleteOp() tea.Cmd {
+	// Capture summary before resetting.
+	ok := p.st.op.ok
+	failed := p.st.op.failed
+	skipped := p.st.op.skipped
+	firstErr := p.st.op.firstErr
+
+	// Reset op state and clear busy in case some IDs were not observed (safety)
+	p.st.op = imagesDeleteOpState{}
+	p.clearBusy()
+	p.rebuildTable()
+
+	// Spec: refresh after execution and show aggregated results.
+	refresh := tea.Batch(listImagesCmd(p.ctx.uc), listLockedImagesCmd(p.ctx.uc))
+
+	body := fmt.Sprintf("Success: %d\nSkipped: %d\nFailed: %d", ok, skipped, failed)
+	if failed > 0 {
+		if firstErr != nil {
+			body = fmt.Sprintf("%s\n\n%s", body, firstErr.Error())
+		}
+		return tea.Sequence(refresh, openDialogCmd(dialogError, "Images", body))
+	}
+	return tea.Sequence(refresh, openDialogCmd(dialogInfo, "Images", body))
+}
+
+func (p imagesPage) Close() tea.Cmd {
+	// Stop in-flight operation promptly on navigation.
+	cancel := p.st.op.cancel
+	return func() tea.Msg {
+		if cancel != nil {
+			cancel()
+		}
+		return nil
+	}
+}
+
+// --- state helpers (centralized mutations; router owns state) ---
+
+func (p *imagesPage) clearSelection() {
+	p.st.selected = map[string]struct{}{}
+	p.st.pendingDeleteIDs = nil
+}
+
+func (p imagesPage) isLocked(id string) bool {
+	_, ok := p.st.locked[id]
+	return ok
+}
+
+func (p imagesPage) isBusy(id string) bool {
+	_, ok := p.st.busy[id]
+	return ok
+}
+
+func (p *imagesPage) setBusy(ids []string) {
+	p.st.busy = toIDSet(ids)
+}
+
+func (p *imagesPage) unsetBusy(id string) {
+	delete(p.st.busy, id)
+}
+
+func (p *imagesPage) clearBusy() {
+	p.st.busy = map[string]struct{}{}
+}
+
+func (p *imagesPage) toggleSelected(id string) {
+	if _, ok := p.st.selected[id]; ok {
+		delete(p.st.selected, id)
+		return
+	}
+	p.st.selected[id] = struct{}{}
+}
+
+func (p imagesPage) sortedSelectedIDs() []string {
+	out := make([]string, 0, len(p.st.selected))
+	for id := range p.st.selected {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (st *imagesState) cursorImageID() (string, bool) {
+	if len(st.items) == 0 {
+		return "", false
+	}
+	i := st.table.Cursor()
+	if i < 0 || i >= len(st.items) {
+		return "", false
+	}
+	return st.items[i].ID, true
+}
+
+// 要移動候補
 func columnsForImagesNormalWidth(total int) []table.Column {
 	const (
 		idW      = 12
@@ -424,90 +670,6 @@ func truncImage(s string, w int) string {
 		return s[:w]
 	}
 	return s[:w-1] + "..."
-}
-
-func (p imagesPage) isLocked(id string) bool {
-	_, ok := p.locked[id]
-	return ok
-}
-
-func (p *imagesPage) toggleSelected(id string) {
-	if _, ok := p.selected[id]; ok {
-		delete(p.selected, id)
-		return
-	}
-	p.selected[id] = struct{}{}
-}
-
-func (p imagesPage) cursorImageID() (string, bool) {
-	if len(p.images) == 0 {
-		return "", false
-	}
-	i := p.imagesTable.Cursor()
-	if i < 0 || i >= len(p.images) {
-		return "", false
-	}
-	return p.images[i].ID, true
-}
-
-func (p imagesPage) selectedDeletableIDs() []string {
-	out := make([]string, 0, len(p.selected))
-	for id := range p.selected {
-		if _, ok := p.locked[id]; ok {
-			continue
-		}
-		out = append(out, id)
-	}
-	return out
-}
-
-// resetTransientState clears in-memory transient state for Images page.
-func (p imagesPage) resetTransientState(clearLocked bool) imagesPage {
-	p.selected = map[string]struct{}{}
-	p.pendingDeleteIDs = nil
-	p.busy = map[string]struct{}{}
-	if clearLocked {
-		p.locked = map[string]struct{}{}
-	}
-	return p
-}
-
-func (p imagesPage) setIdle() imagesPage {
-	p.loading = false
-	p.deleting = false
-	return p
-}
-
-func newImagesController(mode imagesMode) imagesModeController {
-	switch mode {
-	case imagesModeDelete:
-		return newImagesDeleteController()
-	default:
-		return newImagesNormalController()
-	}
-}
-
-func (p imagesPage) switchMode(to imagesMode) imagesPage {
-	if p.ctrl != nil && p.ctrl.ID() == to {
-		return p
-	}
-
-	oldCursor := p.imagesTable.Cursor()
-
-	// Clear mode-related transient state.
-	p = p.resetTransientState(false)
-
-	p.ctrl = newImagesController(to)
-	p.imagesTable = p.ctrl.NewTable()
-	p = p.applyTableLayout()
-
-	// Restore cursor within bounds.
-	hi := 0
-	if len(p.images) > 0 {
-		hi = len(p.images) - 1
-	}
-	p.imagesTable.SetCursor(max(0, min(oldCursor, hi)))
-	return p
 }
 
 func toIDSet(ids []string) map[string]struct{} {
