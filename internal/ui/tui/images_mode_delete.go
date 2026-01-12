@@ -25,17 +25,32 @@ func (m *imagesDeleteMode) Title() string {
 }
 
 func (m *imagesDeleteMode) Columns(totalWidth int) []table.Column {
-	return columnsForImagesDeleteWidth(totalWidth)
+	const (
+		selW     = 4
+		idW      = 12
+		sizeW    = 10
+		createdW = 12
+	)
+
+	repoW := 24
+	if totalWidth > 0 {
+		rest := totalWidth - (selW + idW + sizeW + createdW) - 8
+		if rest > repoW {
+			repoW = rest
+		}
+	}
+
+	return []table.Column{
+		{Title: "SEL", Width: selW},
+		{Title: "ID", Width: idW},
+		{Title: "REPO:TAG", Width: repoW},
+		{Title: "SIZE", Width: sizeW},
+		{Title: "CREATED", Width: createdW},
+	}
 }
 
-func (m *imagesDeleteMode) Rows(st *imagesState) []table.Row {
-	return rowsFromImageSummariesDelete(st.items, st.table.Columns(), st.selected, st.locked, st.busy)
-}
-
-func (m *imagesDeleteMode) FooterKeys(ctx imagesCtx, st *imagesState) []key.Binding {
+func (m *imagesDeleteMode) FooterKeys(ctx imagesCtx) []key.Binding {
 	return []key.Binding{
-		st.table.KeyMap.LineUp,
-		st.table.KeyMap.LineDown,
 		ctx.km.Select,
 		ctx.km.Execute,
 		ctx.km.Exit,
@@ -44,37 +59,36 @@ func (m *imagesDeleteMode) FooterKeys(ctx imagesCtx, st *imagesState) []key.Bind
 	}
 }
 
-func (m *imagesDeleteMode) Update(ctx imagesCtx, st *imagesState, msg tea.Msg) (imagesMode, imagesAction, bool) {
+func (m *imagesDeleteMode) Update(ctx imagesCtx, v imagesView, msg tea.Msg) (imagesAction, bool) {
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
-		return nil, actNone{}, false
+		return actNone{}, false
 	}
 
 	switch {
 	case key.Matches(km, ctx.km.Refresh):
-		return nil, actRefresh{}, true
+		return actRefresh{}, true
 
 	case key.Matches(km, ctx.km.Exit):
-		return newImagesNormalMode(), actExitMode{}, true
+		return actSwitchMode{to: imagesModeNormal}, true
 
 	case key.Matches(km, ctx.km.Select):
-		id, ok := st.cursorImageID()
-		if !ok {
-			return nil, actNone{}, true
+		if !v.HasCursor || v.CursorID == "" {
+			return actNone{}, true
 		}
 		// Spec: locked/busy rows are not selectable.
-		if st.isLocked(id) || st.isBusy(id) {
-			return nil, actNone{}, true
+		if !v.CursorSelectable {
+			return actNone{}, true
 		}
-		return nil, actToggleSelect{id: id}, true
+		return actToggleSelect{id: v.CursorID}, true
 
 	case key.Matches(km, ctx.km.Execute):
 		// Spec: do nothing when none selected.
-		if len(st.selected) == 0 {
-			return nil, actNone{}, true
+		if !v.HasSelection || len(v.SelectedIDs) == 0 {
+			return actNone{}, true
 		}
-		return nil, actExecuteDelete{}, true
+		return actRequestDelete{ids: v.SelectedIDs}, true
 	}
 
-	return nil, actNone{}, false
+	return actNone{}, false
 }

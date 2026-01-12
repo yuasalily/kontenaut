@@ -27,17 +27,30 @@ func (m *imagesNormalMode) Title() string {
 }
 
 func (m *imagesNormalMode) Columns(totalWidth int) []table.Column {
-	return columnsForImagesNormalWidth(totalWidth)
+		const (
+		idW      = 12
+		sizeW    = 10
+		createdW = 12
+	)
+
+	repoW := 24
+	if totalWidth > 0 {
+		rest := totalWidth - (idW + sizeW + createdW) - 6
+		if rest > repoW {
+			repoW = rest
+		}
+	}
+
+	return []table.Column{
+		{Title: "ID", Width: idW},
+		{Title: "REPO:TAG", Width: repoW},
+		{Title: "SIZE", Width: sizeW},
+		{Title: "CREATED", Width: createdW},
+	}
 }
 
-func (m *imagesNormalMode) Rows(st *imagesState) []table.Row {
-	return rowsFromImageSummariesNormal(st.items, st.table.Columns())
-}
-
-func (m *imagesNormalMode) FooterKeys(ctx imagesCtx, st *imagesState) []key.Binding {
+func (m *imagesNormalMode) FooterKeys(ctx imagesCtx) []key.Binding {
 	return []key.Binding{
-		st.table.KeyMap.LineUp,
-		st.table.KeyMap.LineDown,
 		ctx.km.DeleteSingle,
 		ctx.km.EnterDeleteMode,
 		ctx.km.Refresh,
@@ -45,31 +58,30 @@ func (m *imagesNormalMode) FooterKeys(ctx imagesCtx, st *imagesState) []key.Bind
 	}
 }
 
-func (m *imagesNormalMode) Update(ctx imagesCtx, st *imagesState, msg tea.Msg) (imagesMode, imagesAction, bool) {
+func (m *imagesNormalMode) Update(ctx imagesCtx, v imagesView, msg tea.Msg) (imagesAction, bool) {
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
-		return nil, actNone{}, false
+		return actNone{}, false
 	}
 
 	switch {
 	case key.Matches(km, ctx.km.Refresh):
-		return nil, actRefresh{}, true
+		return actRefresh{}, true
 
 	case key.Matches(km, ctx.km.EnterDeleteMode):
-		return newImagesDeleteMode(), actEnterDeleteMode{}, true
+		return actSwitchMode{to: imagesModeDelete}, true
 
 	case key.Matches(km, ctx.km.DeleteSingle):
-		id, ok := st.cursorImageID()
-		if !ok {
-			return nil, actNone{}, true
+		if !v.HasCursor || v.CursorID == "" {
+			return actNone{}, true
 		}
-		return nil, actRequestDelete{ids: []string{id}}, true
+		return actRequestDelete{ids: []string{v.CursorID}}, true
 	}
 
 	// Images Normal: enter is noop. Swallow it so it doesn't accidentally trigger table action.
 	if strings.ToLower(km.String()) == "enter" {
-		return nil, actNone{}, true
+		return actNone{}, true
 	}
 
-	return nil, actNone{}, false
+	return actNone{}, false
 }

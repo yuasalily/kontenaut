@@ -19,14 +19,39 @@ type imagesMode interface {
 	ID() imagesModeID
 	Title() string
 	Columns(totalWidth int) []table.Column
-	Rows(st *imagesState) []table.Row
-	FooterKeys(ctx imagesCtx, st *imagesState) []key.Binding
+	// FooterKeys returns mode-specific footer bindings (excluding table navigation).
+	//
+	// Why exclude table navigation:
+	// - Up/Down are always available and belong to the shared table component.
+	// - Keeping them in the router prevents modes from depending on the mutable table model.
+	FooterKeys(ctx imagesCtx) []key.Binding
 
 	// Update interprets messages and returns:
-	// - next mode (optional)
 	// - an action describing side effects the router should perform
 	// - handled: whether this msg should be swallowed (i.e. not passed to table.Update)
-	Update(ctx imagesCtx, st *imagesState, msg tea.Msg) (next imagesMode, act imagesAction, handled bool)
+	//
+	// Why imagesView (read-only):
+	// - Mode rules should not mutate shared state directly.
+	// - Router remains the single owner of state and side effects.
+	Update(ctx imagesCtx, v imagesView, msg tea.Msg) (act imagesAction, handled bool)
+}
+
+// imagesView is a read-only snapshot of UI-relevant state for mode logic.
+//
+// What:
+// - Cursor and selection information needed to interpret keys.
+// - "Selectable" for the cursor row in the current mode (locked/busy are filtered).
+//
+// Why:
+// - Keeps mode submodels pure-ish: input -> action.
+// - Avoids passing *imagesState (mutable maps/table/items) into models.
+type imagesView struct {
+	HasCursor        bool
+	CursorID         string
+	CursorSelectable bool
+
+	SelectedIDs  []string
+	HasSelection bool
 }
 
 type imagesAction interface{ isImagesAction() }
@@ -41,15 +66,16 @@ type actRefresh struct{}
 
 func (actRefresh) isImagesAction() {}
 
-// actEnterDeleteMode switches mode to delete.
-type actEnterDeleteMode struct{}
+// actSwitchMode requests a mode transition.
+//
+// What:
+// - Mode submodels request transitions by returning this action.
+// Why:
+// - Router owns transitions to keep selection clearing and table rebuild consistent.
+// - Avoids "next mode" returns value and keeps Update() action-driven.
+type actSwitchMode struct{ to imagesModeID }
 
-func (actEnterDeleteMode) isImagesAction() {}
-
-// actExitMode exits the current mode and returns to normal.
-type actExitMode struct{}
-
-func (actExitMode) isImagesAction() {}
+func (actSwitchMode) isImagesAction() {}
 
 // actRequestDelete asks the router to open a confirm dialog for deleting ids.
 //
@@ -64,8 +90,3 @@ func (actRequestDelete) isImagesAction() {}
 type actToggleSelect struct{ id string }
 
 func (actToggleSelect) isImagesAction() {}
-
-// actExecuteDelete means "execute delete for the current selection" (delete mode only).
-type actExecuteDelete struct{}
-
-func (actExecuteDelete) isImagesAction() {}

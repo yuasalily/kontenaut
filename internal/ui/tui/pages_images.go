@@ -3,9 +3,11 @@ package tui
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yuasalily/kontenaut/internal/infra/engine"
@@ -317,9 +319,14 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	}
 
 	// Delegate to mode for key interpretation and mode-specific actions.
-	next, act, handled := p.st.mode.Update(p.ctx, &p.st, msg)
+	//
+	// Why order (mode first):
+	// - Some keys are "commands" (refresh/mode change/execute) and should not be consumed by the table.
+	// - When not handled, we fall back to the table for cursor movement etc.
+	v := p.makeImagesView()
+	act, handled := p.st.mode.Update(p.ctx, v, msg)
 	if handled {
-		return p, p.applyImagesAction(next, act)
+		return p, p.applyImagesAction(act)
 	}
 
 	// Let table handle cursor navigation etc.
@@ -337,7 +344,15 @@ func (p imagesPage) View() string {
 	b.WriteString(p.st.mode.Title() + "\n")
 	b.WriteString(p.st.table.View())
 
-	footer := renderHelpBlock(p.ctx.width, p.st.mode.FooterKeys(p.ctx, &p.st)...)
+	footerKeys := slices.Concat(
+		[]key.Binding{
+			p.st.table.KeyMap.LineUp,
+			p.st.table.KeyMap.LineDown,
+		},
+		p.st.mode.FooterKeys(p.ctx),
+	)
+
+	footer := renderHelpBlock(p.ctx.width, footerKeys...)
 	if footer != "" {
 		b.WriteString("\n" + footer + "\n")
 	}
@@ -357,18 +372,21 @@ func (p *imagesPage) applyTableLayout() {
 func (p *imagesPage) rebuildTable() {
 	cols := p.st.mode.Columns(p.ctx.width)
 	p.st.table.SetColumns(cols)
-	p.st.table.SetRows(p.st.mode.Rows(&p.st))
+	// Rows are built by the router based on the current mode.
+	// Why:
+	// - Mode is kept pure-ish (input -> action) and does not receive *imagesState.
+	// - Rendering uses the router-owned state only.
+	switch p.st.mode.ID() {
+	case imagesModeNormal:
+		p.st.table.SetRows(rowsFromImageSummariesNormal(p.st.items, cols))
+	case imagesModeDelete:
+		p.st.table.SetRows(rowsFromImageSummariesDelete(p.st.items, cols, p.st.selected, p.st.locked, p.st.busy))
+	default:
+		p.st.table.SetRows(rowsFromImageSummariesNormal(p.st.items, cols))
+	}
 }
 
-func (p imagesPage) applyImagesAction(next imagesMode, act imagesAction) tea.Cmd {
-	// Mode transition is owned by the router to keep it consistent.
-	if next != nil && next.ID() != p.st.mode.ID() {
-		// Spec/decision: selection is not preserved across mode changes.
-		p.clearSelection()
-		p.st.mode = next
-		p.rebuildTable()
-	}
-
+func (p imagesPage) applyImagesAction(act imagesAction) tea.Cmd {
 	switch a := act.(type) {
 	case actNone:
 		return nil
@@ -379,26 +397,28 @@ func (p imagesPage) applyImagesAction(next imagesMode, act imagesAction) tea.Cmd
 		p.rebuildTable()
 		return tea.Batch(listImagesCmd(p.ctx.uc), listLockedImagesCmd(p.ctx.uc))
 
-	case actEnterDeleteMode:
-		// Transition already handled above.
-		return nil
-	case actExitMode:
-		// Transition already handled above.
+	case actSwitchMode:
+		// Mode transition is owned by the router to keep it consistent.
+		if p.st.mode.ID() == a.to {
+			return nil
+		}
+		// Decision: selection is not preserved across mode changes.
+		p.clearSelection()
+		switch a.to {
+		case imagesModeNormal:
+			p.st.mode = newImagesNormalMode()
+		case imagesModeDelete:
+			p.st.mode = newImagesDeleteMode()
+		default:
+			p.st.mode = newImagesNormalMode()
+		}
+		p.rebuildTable()
 		return nil
 
 	case actToggleSelect:
 		p.toggleSelected(a.id)
 		p.rebuildTable()
 		return nil
-
-	case actExecuteDelete:
-		ids := p.sortedSelectedIDs()
-		if len(ids) == 0 {
-			// Spec: do nothing when none selected
-			return nil
-		}
-		// Confirm is required by spec (delete mode).
-		return p.openDeleteConfirm(ids)
 
 	case actRequestDelete:
 		// Normal 'd' also requires confirm (decision).
@@ -533,52 +553,23 @@ func (st *imagesState) cursorImageID() (string, bool) {
 	return st.items[i].ID, true
 }
 
-// 要移動候補
-func columnsForImagesNormalWidth(total int) []table.Column {
-	const (
-		idW      = 12
-		sizeW    = 10
-		createdW = 12
-	)
+func (p imagesPage) makeImagesView() imagesView {
+	cursorID, ok := p.st.cursorImageID()
+	selected := p.sortedSelectedIDs()
 
-	repoW := 24
-	if total > 0 {
-		rest := total - (idW + sizeW + createdW) - 6
-		if rest > repoW {
-			repoW = rest
-		}
+	// cursorSelectable is used only for delete-mode selection toggling.
+	// In other case (e.g. normal 'd'), router re-validates at confirm/execute time.
+	cursorSelectable := false
+	if ok && cursorID != "" {
+		cursorSelectable = !p.isLocked(cursorID) && !p.isBusy(cursorID)
 	}
 
-	return []table.Column{
-		{Title: "ID", Width: idW},
-		{Title: "REPO:TAG", Width: repoW},
-		{Title: "SIZE", Width: sizeW},
-		{Title: "CREATED", Width: createdW},
-	}
-}
-
-func columnsForImagesDeleteWidth(total int) []table.Column {
-	const (
-		selW     = 4
-		idW      = 12
-		sizeW    = 10
-		createdW = 12
-	)
-
-	repoW := 24
-	if total > 0 {
-		rest := total - (selW + idW + sizeW + createdW) - 8
-		if rest > repoW {
-			repoW = rest
-		}
-	}
-
-	return []table.Column{
-		{Title: "SEL", Width: selW},
-		{Title: "ID", Width: idW},
-		{Title: "REPO:TAG", Width: repoW},
-		{Title: "SIZE", Width: sizeW},
-		{Title: "CREATED", Width: createdW},
+	return imagesView{
+		HasCursor:        ok && cursorID != "",
+		CursorID:         cursorID,
+		CursorSelectable: cursorSelectable,
+		SelectedIDs:      selected,
+		HasSelection:     len(selected) > 0,
 	}
 }
 
