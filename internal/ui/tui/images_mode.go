@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -10,21 +8,13 @@ import (
 //
 // What:
 // - Normal / Delete mode are separate submodules.
-// - Each mode owns its own key interpretation and UI shape (columns/rows/footer).
+// - Each mode owns its own key interpretation (input -> action).
 //
 // Why:
 // - The spec is mode-centric (SEL column only in mode, enter=execute in mode, lock rules).
 // - Keeping mode rules localized prevents branching from spreading in the router.
 type imagesMode interface {
 	ID() imagesModeID
-	Title() string
-	Columns(totalWidth int) []table.Column
-	// FooterKeys returns mode-specific footer bindings (excluding table navigation).
-	//
-	// Why exclude table navigation:
-	// - Up/Down are always available and belong to the shared table component.
-	// - Keeping them in the router prevents modes from depending on the mutable table model.
-	FooterKeys(ctx imagesCtx) []key.Binding
 
 	// Update interprets messages and returns:
 	// - an action describing side effects the router should perform

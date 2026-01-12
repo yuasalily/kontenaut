@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -21,42 +20,6 @@ var _ imagesMode = (*imagesNormalMode)(nil)
 func newImagesNormalMode() imagesMode { return &imagesNormalMode{} }
 
 func (m *imagesNormalMode) ID() imagesModeID { return imagesModeNormal }
-
-func (m *imagesNormalMode) Title() string {
-	return "Images"
-}
-
-func (m *imagesNormalMode) Columns(totalWidth int) []table.Column {
-		const (
-		idW      = 12
-		sizeW    = 10
-		createdW = 12
-	)
-
-	repoW := 24
-	if totalWidth > 0 {
-		rest := totalWidth - (idW + sizeW + createdW) - 6
-		if rest > repoW {
-			repoW = rest
-		}
-	}
-
-	return []table.Column{
-		{Title: "ID", Width: idW},
-		{Title: "REPO:TAG", Width: repoW},
-		{Title: "SIZE", Width: sizeW},
-		{Title: "CREATED", Width: createdW},
-	}
-}
-
-func (m *imagesNormalMode) FooterKeys(ctx imagesCtx) []key.Binding {
-	return []key.Binding{
-		ctx.km.DeleteSingle,
-		ctx.km.EnterDeleteMode,
-		ctx.km.Refresh,
-		ctx.gkm.Quit,
-	}
-}
 
 func (m *imagesNormalMode) Update(ctx imagesCtx, v imagesView, msg tea.Msg) (imagesAction, bool) {
 	km, ok := msg.(tea.KeyMsg)

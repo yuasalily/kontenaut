@@ -16,6 +16,8 @@ import (
 
 const confirmDeleteImages ConfirmID = "images:delete"
 
+var imagesSpecs = imagesModeSpecs()
+
 // imagesModeID identifies Images UI modes.
 // What: Normal / Delete
 // Why: The spec defines behavior, keys and SEL column visibility by mode.
@@ -340,8 +342,13 @@ func (p imagesPage) View() string {
 		return "Loading..."
 	}
 
+	spec, ok := imagesSpecs[p.st.mode.ID()]
+	if !ok {
+		spec = imagesSpecs[imagesModeNormal]
+	}
+
 	var b strings.Builder
-	b.WriteString(p.st.mode.Title() + "\n")
+	b.WriteString(spec.Title() + "\n")
 	b.WriteString(p.st.table.View())
 
 	footerKeys := slices.Concat(
@@ -349,7 +356,7 @@ func (p imagesPage) View() string {
 			p.st.table.KeyMap.LineUp,
 			p.st.table.KeyMap.LineDown,
 		},
-		p.st.mode.FooterKeys(p.ctx),
+		spec.FooterKeys(p.ctx),
 	)
 
 	footer := renderHelpBlock(p.ctx.width, footerKeys...)
@@ -370,23 +377,21 @@ func (p *imagesPage) applyTableLayout() {
 }
 
 func (p *imagesPage) rebuildTable() {
-	cols := p.st.mode.Columns(p.ctx.width)
-	p.st.table.SetColumns(cols)
-	// Rows are built by the router based on the current mode.
-	// Why:
-	// - Mode is kept pure-ish (input -> action) and does not receive *imagesState.
-	// - Rendering uses the router-owned state only.
-	switch p.st.mode.ID() {
-	case imagesModeNormal:
-		p.st.table.SetRows(rowsFromImageSummariesNormal(p.st.items, cols))
-	case imagesModeDelete:
-		p.st.table.SetRows(rowsFromImageSummariesDelete(p.st.items, cols, p.st.selected, p.st.locked, p.st.busy))
-	default:
-		p.st.table.SetRows(rowsFromImageSummariesNormal(p.st.items, cols))
+	spec, ok := imagesSpecs[p.st.mode.ID()]
+	if !ok {
+		spec = imagesSpecs[imagesModeNormal]
 	}
+	cols := spec.Columns(p.ctx.width)
+	p.st.table.SetColumns(cols)
+
+	// Rows are built by the route via the spec based on the current mode.
+	// Why:
+	// - Rendering uses router-owned state only.
+	// - Modes stay "pure-ish" (input -> action) and do not receive mutable state.
+	p.st.table.SetRows(spec.Rows(p.st.items, cols, p.st.selected, p.st.locked, p.st.busy))
 }
 
-func (p imagesPage) applyImagesAction(act imagesAction) tea.Cmd {
+func (p *imagesPage) applyImagesAction(act imagesAction) tea.Cmd {
 	switch a := act.(type) {
 	case actNone:
 		return nil
