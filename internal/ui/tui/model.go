@@ -180,6 +180,14 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return navigateMsg{to: pageContainers} }
 		}
 
+	case openImagesDeleteMsg:
+		// Keep currentPageID as pageImages so the navbar stays on "Images".
+		closeCmd := m.closeCurrentPageCmd()
+		m.currentPageID = pageImages
+		m.currentPage = newImagesDeletePage(m.km, m.imageUC)
+		m.applyWindowSizeToCurrentPage()
+		return m, tea.Batch(closeCmd, m.currentPage.Init())
+
 	case openLogsMsg:
 		// Why logs are opened via Msg:
 		// - Keeps navigation page-agnostic (pages emit messages; router decides transitions).
