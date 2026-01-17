@@ -12,6 +12,10 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
+type deleteSelectedImagesConfirmedMsg struct {
+	ids []string
+}
+
 // imagesDeletePage renders Images delete mode as a separate page.
 //
 // Why:
@@ -33,8 +37,6 @@ type imagesDeletePage struct {
 	selected map[string]struct{}
 	locked   map[string]struct{}
 	busy     map[string]struct{}
-
-	pendingDeleteIDs []string
 
 	gkm globalKeyMap
 	km  imagesKeyMap
@@ -108,26 +110,19 @@ func (p imagesDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case lockedImagesLoadFailedMsg:
 		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
 
-	case confirmDialogResolvedMsg:
-		if msg.id != confirmDeleteImages {
-			return p, nil
-		}
-
-		ids := p.pendingDeleteIDs
-
-		if !msg.ok || len(ids) == 0 {
+	case deleteSelectedImagesConfirmedMsg:
+		if len(msg.ids) == 0 {
 			return p, nil
 		}
 		p.deleting = true
-		p.busy = toIDSet(ids)
-		return p, deleteImagesCmd(p.imageUC, ids)
+		p.busy = toIDSet(msg.ids)
+		return p, deleteImagesCmd(p.imageUC, msg.ids)
 
 	case imagesDeletedMsg:
 		p.deleting = false
 		p.loading = true
 		p.selected = map[string]struct{}{}
 		p.busy = map[string]struct{}{}
-		p.pendingDeleteIDs = nil
 		p.locked = map[string]struct{}{}
 
 		var dlt tea.Cmd
@@ -204,7 +199,6 @@ func (p imagesDeletePage) handleKey(msg tea.KeyMsg) (imagesDeletePage, tea.Cmd, 
 		p.loading = true
 		p.selected = map[string]struct{}{}
 		p.busy = map[string]struct{}{}
-		p.pendingDeleteIDs = nil
 		p.locked = map[string]struct{}{}
 		return p, p.Init(), true
 
@@ -242,9 +236,13 @@ func (p imagesDeletePage) handleKey(msg tea.KeyMsg) (imagesDeletePage, tea.Cmd, 
 			// Spec: do nothing when none selected.
 			return p, nil, true
 		}
-		p.pendingDeleteIDs = ids
 		body := fmt.Sprintf("Delete %d image(s)", len(ids))
-		return p, openConfirmDialogCmd(confirmDeleteImages, "Images", body), true
+		return p, openConfirmDialogCmd(
+			"Images",
+			body,
+			deleteSelectedImagesConfirmedMsg{ids: ids},
+			nil,
+		), true
 
 	case key.Matches(msg, p.km.Exit):
 		// Exit delete mode -> back to normal Images page.

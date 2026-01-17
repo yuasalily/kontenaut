@@ -12,7 +12,9 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
-const confirmDeleteImages ConfirmID = "images:delete"
+type deleteSingleImagesConfirmedMsg struct {
+	id string
+}
 
 // imagesPage renders Images list (normal mode).
 type imagesPage struct {
@@ -29,8 +31,6 @@ type imagesPage struct {
 	imagesTable table.Model
 
 	locked map[string]struct{}
-
-	pendingDeleteIDs []string
 
 	gkm globalKeyMap
 	km  imagesKeyMap
@@ -142,24 +142,16 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case lockedImagesLoadFailedMsg:
 		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
 
-	case confirmDialogResolvedMsg:
-		if msg.id != confirmDeleteImages {
-			return p, nil
-		}
-
-		ids := p.pendingDeleteIDs
-		p.pendingDeleteIDs = nil
-
-		if !msg.ok || len(ids) == 0 {
+	case deleteSingleImagesConfirmedMsg:
+		if msg.id == "" {
 			return p, nil
 		}
 		p.deleting = true
-		return p, deleteImagesCmd(p.imageUC, ids)
+		return p, deleteImagesCmd(p.imageUC, []string{msg.id})
 
 	case imagesDeletedMsg:
 		p.deleting = false
 		p.loading = true
-		p.pendingDeleteIDs = nil
 		p.locked = map[string]struct{}{}
 
 		var dlt tea.Cmd
@@ -214,7 +206,6 @@ func (p imagesPage) handleKey(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, p.km.Refresh):
 		p.loading = true
-		p.pendingDeleteIDs = nil
 		p.locked = map[string]struct{}{}
 		return p, p.Init(), true
 
@@ -229,8 +220,12 @@ func (p imagesPage) handleKey(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
 		if p.isLocked(id) {
 			return p, openDialogCmd(dialogInfo, "Images", "this image is in use and cannot be selected."), true
 		}
-		p.pendingDeleteIDs = []string{id}
-		return p, openConfirmDialogCmd(confirmDeleteImages, "Images", "Delete 1 image?"), true
+		return p, openConfirmDialogCmd(
+			"Images",
+			"Delete 1 image?",
+			deleteSingleImagesConfirmedMsg{id: id},
+			nil,
+		), true
 	}
 
 	return p, nil, false
