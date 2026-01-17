@@ -12,7 +12,9 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
-const confirmDeleteContainers ConfirmID = "containers:delete"
+type deleteContainersConfirmMsg struct {
+	ids []string
+}
 
 // containersPage renders the Containers list and destructive actions (delete).
 //
@@ -33,8 +35,6 @@ type containersPage struct {
 
 	selected map[string]struct{}
 	locked   map[string]struct{}
-
-	pendingDeleteIDs []string
 
 	gkm globalKeyMap
 	km  containersKeyMap
@@ -125,17 +125,12 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p = p.setIdle()
 		return p, openDialogCmd(dialogError, "Containers", msg.err.Error())
 
-	case confirmDialogResolvedMsg:
-		if msg.id != confirmDeleteContainers {
-			return p, nil
-		}
-		ids := p.pendingDeleteIDs
-		p.pendingDeleteIDs = nil
-		if !msg.ok || len(ids) == 0 {
+	case deleteContainersConfirmMsg:
+		if len(msg.ids) == 0 {
 			return p, nil
 		}
 		p.deleting = true
-		return p, deleteContainersCmd(p.containerUC, ids)
+		return p, deleteContainersCmd(p.containerUC, msg.ids)
 
 	case containersDeletedMsg:
 		p.deleting = false
@@ -198,7 +193,6 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 		p.loading = true
 		p.selected = map[string]struct{}{}
 		p.locked = map[string]struct{}{}
-		p.pendingDeleteIDs = nil
 		return p, p.Init(), true
 
 	case key.Matches(msg, p.km.Select):
@@ -221,9 +215,13 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 		if len(ids) == 0 {
 			return p, openDialogCmd(dialogInfo, "Containers", "No containers selected"), true
 		}
-		p.pendingDeleteIDs = ids
 		body := fmt.Sprintf("Delete %d container(s)?", len(ids))
-		return p, openConfirmDialogCmd(confirmDeleteContainers, "Containers", body), true
+		return p, openConfirmDialogCmd(
+			"Containers",
+			body,
+			deleteContainersConfirmMsg{ids: ids},
+			nil,
+		), true
 
 	case key.Matches(msg, p.km.Logs):
 		c, ok := p.cursorContainer()

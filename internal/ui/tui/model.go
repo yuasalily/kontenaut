@@ -9,11 +9,10 @@ import (
 
 // modalSession tracks the current modal dialog state (if any)
 type modalSession struct {
-	dialog    *dialogModel
-	confirmID ConfirmID // confirm dialogではない場合は空
+	dialog *dialogModel
+	yesMsg tea.Msg
+	noMsg  tea.Msg
 }
-
-func (s modalSession) isConfirm() bool { return s.confirmID != "" }
 
 type routerModel struct {
 	containerUC *usecase.ContainerUsecase
@@ -111,8 +110,9 @@ func (m *routerModel) handleDialog(msg tea.Msg) (bool, tea.Cmd) {
 		return true, nil
 	case openConfirmDialogMsg:
 		m.modal = modalSession{
-			dialog:    newDialog(dialogConfirm, x.title, x.body),
-			confirmID: x.id,
+			dialog: newDialog(dialogConfirm, x.title, x.body),
+			yesMsg: x.yesMsg,
+			noMsg:  x.noMsg,
 		}
 		m.applyWindowSizeToDialog()
 		return true, nil
@@ -138,14 +138,17 @@ func (m *routerModel) handleDialog(msg tea.Msg) (bool, tea.Cmd) {
 	// モーダルのクローズ処理
 	s := m.modal
 	m.modal = modalSession{}
-	// 確認モーダルでない場合はそのまま閉じる
-	if !s.isConfirm() {
+
+	if okResult {
+		if s.yesMsg == nil {
+			return true, nil
+		}
+		return true, func() tea.Msg { return s.yesMsg }
+	}
+	if s.noMsg == nil {
 		return true, nil
 	}
-	// 確認モーダルの場合は結果を流す
-	return true, func() tea.Msg {
-		return confirmDialogResolvedMsg{id: s.confirmID, ok: okResult}
-	}
+	return true, func() tea.Msg { return s.noMsg }
 }
 
 func (m *routerModel) handleWindowSize(msg tea.Msg) (bool, tea.Cmd) {
