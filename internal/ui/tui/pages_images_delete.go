@@ -219,6 +219,11 @@ func (p imagesDeletePage) handleKey(msg tea.KeyMsg) (imagesDeletePage, tea.Cmd, 
 		}
 		if _, busy := p.busy[id]; busy {
 			return p, nil, true
+		}
+
+		// toggle selection
+		if _, ok := p.selected[id]; ok {
+			delete(p.selected, id)
 		} else {
 			p.selected[id] = struct{}{}
 		}
@@ -240,6 +245,10 @@ func (p imagesDeletePage) handleKey(msg tea.KeyMsg) (imagesDeletePage, tea.Cmd, 
 		p.pendingDeleteIDs = ids
 		body := fmt.Sprintf("Delete %d image(s)", len(ids))
 		return p, openConfirmDialogCmd(confirmDeleteImages, "Images", body), true
+
+	case key.Matches(msg, p.km.Exit):
+		// Exit delete mode -> back to normal Images page.
+		return p, func() tea.Msg { return navigateMsg{to: pageImages} }, true
 	}
 
 	return p, nil, false
