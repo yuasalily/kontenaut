@@ -234,25 +234,18 @@ func columnsForContainersNormalWidth(total int) []table.Column {
 }
 
 func rowsFromContainerSummariesNormal(items []engine.ContainerSummary, cols []table.Column) []table.Row {
-	getW := func(i int, fallback int) int {
-		if i < 0 || i >= len(cols) {
-			return fallback
-		}
-		return cols[i].Width
-	}
-
-	idW := getW(0, 12)
-	imageW := getW(1, 20)
-	statusW := getW(2, 18)
-	nameW := getW(3, 20)
+	idW := colWidth(cols, 0, 12)
+	imageW := colWidth(cols, 1, 20)
+	statusW := colWidth(cols, 2, 18)
+	nameW := colWidth(cols, 3, 20)
 
 	out := make([]table.Row, 0, len(items))
 	for _, c := range items {
 		out = append(out, table.Row{
-			truncContainer(c.ID, idW),
-			truncContainer(c.Image, imageW),
-			truncContainer(c.Status, statusW),
-			truncContainer(c.Name, nameW),
+			truncText(c.ID, idW),
+			truncText(c.Image, imageW),
+			truncText(c.Status, statusW),
+			truncText(c.Name, nameW),
 		})
 	}
 	return out
@@ -278,17 +271,4 @@ func (p containersPage) setIdle() containersPage {
 	p.loading = false
 	p.deleting = false
 	return p
-}
-
-func truncContainer(s string, w int) string {
-	if w <= 0 {
-		return ""
-	}
-	if len(s) <= w {
-		return s
-	}
-	if w <= 1 {
-		return s[:w]
-	}
-	return s[:w-1] + "..."
 }

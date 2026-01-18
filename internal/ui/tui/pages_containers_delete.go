@@ -289,36 +289,22 @@ func rowsFromContainerSummariesDelete(
 	locked map[string]struct{},
 	busy map[string]struct{},
 ) []table.Row {
-	getW := func(i int, fallback int) int {
-		if i < 0 || i >= len(cols) {
-			return fallback
-		}
-		return cols[i].Width
-	}
-
-	selW := getW(0, 4)
-	idW := getW(1, 12)
-	imageW := getW(2, 20)
-	statusW := getW(3, 18)
-	nameW := getW(4, 20)
+	selW := colWidth(cols, 0, 4)
+	idW := colWidth(cols, 1, 12)
+	imageW := colWidth(cols, 2, 20)
+	statusW := colWidth(cols, 3, 18)
+	nameW := colWidth(cols, 4, 20)
 
 	out := make([]table.Row, 0, len(items))
 	for _, c := range items {
-		sel := "[ ]"
-		if _, ok := busy[c.ID]; ok {
-			sel = "[*]"
-		} else if _, ok := locked[c.ID]; ok {
-			sel = "[#]"
-		} else if _, ok := selected[c.ID]; ok {
-			sel = "[x]"
-		}
+		sel := deleteSelMark(c.ID, selected, locked, busy)
 
 		out = append(out, table.Row{
-			truncContainer(sel, selW),
-			truncContainer(c.ID, idW),
-			truncContainer(c.Image, imageW),
-			truncContainer(c.Status, statusW),
-			truncContainer(c.Name, nameW),
+			truncText(sel, selW),
+			truncText(c.ID, idW),
+			truncText(c.Image, imageW),
+			truncText(c.Status, statusW),
+			truncText(c.Name, nameW),
 		})
 	}
 	return out
