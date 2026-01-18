@@ -310,40 +310,26 @@ func rowsFromImageSummariesDelete(
 	locked map[string]struct{},
 	busy map[string]struct{},
 ) []table.Row {
-	getW := func(i int, fallback int) int {
-		if i < 0 || i >= len(cols) {
-			return fallback
-		}
-		return cols[i].Width
-	}
-
-	selW := getW(0, 4)
-	idW := getW(1, 12)
-	repoW := getW(2, 24)
-	sizeW := getW(3, 10)
-	createdW := getW(4, 12)
+	selW := colWidth(cols, 0, 4)
+	idW := colWidth(cols, 1, 12)
+	repoW := colWidth(cols, 2, 24)
+	sizeW := colWidth(cols, 3, 10)
+	createdW := colWidth(cols, 4, 12)
 
 	out := make([]table.Row, 0, len(items))
 	for _, img := range items {
-		sel := "[ ]"
-		if _, ok := busy[img.ID]; ok {
-			sel = "[*]"
-		} else if _, ok := locked[img.ID]; ok {
-			sel = "[#]"
-		} else if _, ok := selected[img.ID]; ok {
-			sel = "[x]"
-		}
+		sel := deleteSelMark(img.ID, selected, locked, busy)
 
 		// Why trim sha256 prefix:
 		// - Docker image IDs are long; trimming improves table readability.
 		// - The remaining prefix is typically sufficient for identification in UI.
 		displayID := strings.TrimPrefix(img.ID, "sha256:")
 		row := table.Row{
-			truncImage(sel, selW),
-			truncImage(displayID, idW),
-			truncImage(img.RepoTags, repoW),
-			truncImage(img.Size, sizeW),
-			truncImage(img.CreatedAt, createdW),
+			truncText(sel, selW),
+			truncText(displayID, idW),
+			truncText(img.RepoTags, repoW),
+			truncText(img.Size, sizeW),
+			truncText(img.CreatedAt, createdW),
 		}
 		out = append(out, row)
 	}

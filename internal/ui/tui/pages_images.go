@@ -225,17 +225,10 @@ func columnsForImagesNormalWidth(total int) []table.Column {
 }
 
 func rowsFromImageSummariesNormal(items []engine.ImageSummary, cols []table.Column) []table.Row {
-	getW := func(i int, fallback int) int {
-		if i < 0 || i >= len(cols) {
-			return fallback
-		}
-		return cols[i].Width
-	}
-
-	idW := getW(0, 12)
-	repoW := getW(1, 24)
-	sizeW := getW(2, 10)
-	createdW := getW(3, 12)
+	idW := colWidth(cols, 0, 12)
+	repoW := colWidth(cols, 1, 24)
+	sizeW := colWidth(cols, 2, 10)
+	createdW := colWidth(cols, 3, 12)
 
 	out := make([]table.Row, 0, len(items))
 	for _, img := range items {
@@ -244,27 +237,14 @@ func rowsFromImageSummariesNormal(items []engine.ImageSummary, cols []table.Colu
 		// - The remaining prefix is typically sufficient for identification in UI.
 		displayID := strings.TrimPrefix(img.ID, "sha256:")
 		row := table.Row{
-			truncImage(displayID, idW),
-			truncImage(img.RepoTags, repoW),
-			truncImage(img.Size, sizeW),
-			truncImage(img.CreatedAt, createdW),
+			truncText(displayID, idW),
+			truncText(img.RepoTags, repoW),
+			truncText(img.Size, sizeW),
+			truncText(img.CreatedAt, createdW),
 		}
 		out = append(out, row)
 	}
 	return out
-}
-
-func truncImage(s string, w int) string {
-	if w <= 0 {
-		return ""
-	}
-	if len(s) <= w {
-		return s
-	}
-	if w <= 1 {
-		return s[:w]
-	}
-	return s[:w-1] + "..."
 }
 
 func (p imagesPage) isLocked(id string) bool {
@@ -287,15 +267,4 @@ func (p imagesPage) setIdle() imagesPage {
 	p.loading = false
 	p.deleting = false
 	return p
-}
-
-func toIDSet(ids []string) map[string]struct{} {
-	out := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		if id == "" {
-			continue
-		}
-		out[id] = struct{}{}
-	}
-	return out
 }
