@@ -34,8 +34,8 @@ func newImagesKeyMap() imagesKeyMap {
 			key.WithHelp("space", "select"),
 		),
 		Execute: key.NewBinding(
-			key.WithKeys("enter"),
-			key.WithHelp("enter", "execute"),
+			key.WithKeys("x"),
+			key.WithHelp("x", "execute"),
 		),
 		Exit: key.NewBinding(
 			key.WithKeys("esc"),

@@ -177,6 +177,14 @@ func (p containersDeletePage) handleKey(msg tea.KeyMsg) (containersDeletePage, t
 	}
 
 	switch {
+	case msg.Type == tea.KeyEnter:
+		// no-op: delete mode does not use Enter.
+		//
+		// Why:
+		// - Execute is bound explicitly (e.g. "x") to reduce accidental execution.
+		// - Explicitly swallowing Enter prevents the table component from reacting to it and
+		// keeps destructive operations behind a deliberate key press.
+		return p, nil, true
 	case key.Matches(msg, p.km.Refresh):
 		p.loading = true
 		p.selected = map[string]struct{}{}

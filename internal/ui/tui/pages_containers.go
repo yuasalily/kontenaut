@@ -142,6 +142,15 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 	}
 
 	switch {
+	case msg.Type == tea.KeyEnter:
+		// no-op: Enter is intentionally unused in Containers normal mode.
+		//
+		// Why:
+		// - Enter is reserved for "confirm/execute" semantics in the app (dialogs and destructive actions).
+		// - Explicitly swallowing Enter prevents accidental behavior changes from the table component
+		//   (some versions may react to Enter) and keeps input handling predictable.
+		return p, nil, true
+
 	case key.Matches(msg, p.km.Refresh):
 		p.loading = true
 		p.locked = map[string]struct{}{}
