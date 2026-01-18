@@ -31,16 +31,16 @@ func newContainersKeyMap() containersKeyMap {
 			key.WithHelp("D", "delete mode"),
 		),
 		Logs: key.NewBinding(
-			key.WithKeys("enter"),
-			key.WithHelp("enter", "logs"),
+			key.WithKeys("l"),
+			key.WithHelp("l", "logs"),
 		),
 		Select: key.NewBinding(
 			key.WithKeys(" ", "space"),
 			key.WithHelp("space", "select"),
 		),
 		Execute: key.NewBinding(
-			key.WithKeys("enter"),
-			key.WithHelp("enter", "execute"),
+			key.WithKeys("x"),
+			key.WithHelp("x", "execute"),
 		),
 		Exit: key.NewBinding(
 			key.WithKeys("esc"),
