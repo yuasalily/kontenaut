@@ -91,7 +91,10 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			return p, nil
 		}
 		p.deleting = true
-		return p, deleteImagesCmd(p.imageUC, []string{msg.id})
+		return p, tea.Sequence(
+			setGlobalBusyCmd(true),
+			deleteImagesCmd(p.imageUC, []string{msg.id}),
+		)
 
 	case imagesDeletedMsg:
 		p.deleting = false
@@ -108,7 +111,11 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			}
 			dlt = openDialogCmd(dialogError, "Images", body)
 		}
-		return p, tea.Sequence(tea.Batch(listImagesCmd(p.imageUC), listLockedImagesCmd(p.imageUC)), dlt)
+		return p, tea.Sequence(
+			setGlobalBusyCmd(false),
+			tea.Batch(listImagesCmd(p.imageUC), listLockedImagesCmd(p.imageUC)),
+			dlt,
+		)
 	}
 
 	var cmd tea.Cmd

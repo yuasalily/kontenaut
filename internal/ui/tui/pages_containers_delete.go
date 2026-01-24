@@ -98,7 +98,10 @@ func (p containersDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		}
 		p.deleting = true
 		p.busy = toIDSet(msg.ids)
-		return p, deleteContainersCmd(p.containerUC, msg.ids)
+		return p, tea.Sequence(
+			setGlobalBusyCmd(true),
+			deleteContainersCmd(p.containerUC, msg.ids),
+		)
 
 	case containersDeletedMsg:
 		p.deleting = false
@@ -118,7 +121,11 @@ func (p containersDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			dlt = openDialogCmd(dialogError, "Containers", body)
 		}
 		// Stay in delete page after operation.
-		return p, tea.Sequence(listContainersCmd(p.containerUC), dlt)
+		return p, tea.Sequence(
+			setGlobalBusyCmd(false),
+			listContainersCmd(p.containerUC),
+			dlt,
+		)
 	}
 
 	var cmd tea.Cmd

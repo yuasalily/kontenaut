@@ -83,7 +83,10 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			return p, nil
 		}
 		p.deleting = true
-		return p, deleteContainersCmd(p.containerUC, []string{msg.id})
+		return p, tea.Sequence(
+			setGlobalBusyCmd(true),
+			deleteContainersCmd(p.containerUC, []string{msg.id}),
+		)
 
 	case containersDeletedMsg:
 		p.deleting = false
@@ -100,7 +103,11 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			}
 			dlt = openDialogCmd(dialogError, "Containers", body)
 		}
-		return p, tea.Sequence(listContainersCmd(p.containerUC), dlt)
+		return p, tea.Sequence(
+			setGlobalBusyCmd(false),
+			listContainersCmd(p.containerUC),
+			dlt,
+		)
 	}
 
 	var cmd tea.Cmd

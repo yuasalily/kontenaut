@@ -116,7 +116,10 @@ func (p imagesDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		}
 		p.deleting = true
 		p.busy = toIDSet(msg.ids)
-		return p, deleteImagesCmd(p.imageUC, msg.ids)
+		return p, tea.Sequence(
+			setGlobalBusyCmd(true),
+			deleteImagesCmd(p.imageUC, msg.ids),
+		)
 
 	case imagesDeletedMsg:
 		p.deleting = false
@@ -136,7 +139,11 @@ func (p imagesDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			dlt = openDialogCmd(dialogError, "Images", body)
 		}
 		// Stay in delete page after operation.
-		return p, tea.Sequence(tea.Batch(listImagesCmd(p.imageUC), listLockedImagesCmd(p.imageUC)), dlt)
+		return p, tea.Sequence(
+			setGlobalBusyCmd(false),
+			tea.Batch(listImagesCmd(p.imageUC), listLockedImagesCmd(p.imageUC)),
+			dlt,
+		)
 	}
 
 	var cmd tea.Cmd
