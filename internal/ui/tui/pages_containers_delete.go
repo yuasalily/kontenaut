@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -40,6 +41,8 @@ type containersDeletePage struct {
 
 	gkm globalKeyMap
 	km  containersKeyMap
+
+	sp spinner.Model
 }
 
 // compile-time interface check
@@ -55,15 +58,27 @@ func newContainersDeletePage(gkm globalKeyMap, containerUC *usecase.ContainerUse
 		busy:            map[string]struct{}{},
 		gkm:             gkm,
 		km:              newContainersKeyMap(),
+		sp:              newLoadingSpinner(),
 	}
 }
 
 func (p containersDeletePage) Init() tea.Cmd {
-	return listContainersCmd(p.containerUC)
+	return tea.Batch(
+		listContainersCmd(p.containerUC),
+		p.sp.Tick,
+	)
 }
 
 func (p containersDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		p.sp, cmd = p.sp.Update(msg)
+		if p.loading {
+			return p, cmd
+		}
+		return p, nil
+
 	case tea.WindowSizeMsg:
 		p.width, p.height = msg.Width, msg.Height
 		p = p.applyTableLayout()
@@ -135,7 +150,7 @@ func (p containersDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 
 func (p containersDeletePage) View() string {
 	if p.loading {
-		return "Loading..."
+		return fmt.Sprintf("%s Loading...\n", p.sp.View())
 	}
 	if p.deleting {
 		return "Deleting..."

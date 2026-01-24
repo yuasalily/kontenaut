@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -104,6 +105,8 @@ type logsPage struct {
 
 	gkm globalKeyMap
 	km  logsKeyMap
+
+	sp spinner.Model
 }
 
 // compile-time interface check
@@ -121,6 +124,7 @@ func newLogsPage(gkm globalKeyMap, containerUC *usecase.ContainerUsecase, contai
 		pinned:        true,
 		gkm:           gkm,
 		km:            newLogsKeyMap(),
+		sp:            newLoadingSpinner(),
 	}
 }
 
@@ -170,11 +174,23 @@ func logsTickCmd() tea.Cmd {
 }
 
 func (p logsPage) Init() tea.Cmd {
-	return tea.Batch(startFollowLogsCmd(p.containerUC, p.containerID, logsDefaultTail), logsTickCmd())
+	return tea.Batch(
+		startFollowLogsCmd(p.containerUC, p.containerID, logsDefaultTail),
+		logsTickCmd(),
+		p.sp.Tick,
+	)
 }
 
 func (p logsPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		p.sp, cmd = p.sp.Update(msg)
+		if p.loading {
+			return p, cmd
+		}
+		return p, nil
+
 	case tea.WindowSizeMsg:
 		p.width, p.height = msg.Width, msg.Height
 		p = p.applyViewportLayout()
@@ -280,7 +296,7 @@ func (p logsPage) footerView() string {
 
 func (p logsPage) bodyView() string {
 	if p.loading {
-		return "Loading..."
+		return fmt.Sprintf("%s Loading...\n", p.sp.View())
 	}
 	if p.ring.Len() == 0 {
 		return "<no logs>"

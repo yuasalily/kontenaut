@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yuasalily/kontenaut/internal/infra/engine"
 	"github.com/yuasalily/kontenaut/internal/usecase"
@@ -26,13 +27,21 @@ type overviewPage struct {
 
 	gkm globalKeyMap
 	km  overviewKeyMap
+
+	sp spinner.Model
 }
 
 // compile-time interface check
 var _ Page = overviewPage{}
 
 func newOverviewPage(gkm globalKeyMap, daemonUC *usecase.DaemonUsecase) Page {
-	return overviewPage{daemonUC: daemonUC, loading: true, gkm: gkm, km: newOverviewKeyMap()}
+	return overviewPage{
+		daemonUC: daemonUC,
+		loading:  true,
+		gkm:      gkm,
+		km:       newOverviewKeyMap(),
+		sp:       newLoadingSpinner(),
+	}
 }
 
 type daemonInfoLoadedMsg engine.DaemonInfo
@@ -48,10 +57,18 @@ func daemonInfoCmd(daemonUC *usecase.DaemonUsecase) tea.Cmd {
 	}
 }
 
-func (p overviewPage) Init() tea.Cmd { return daemonInfoCmd(p.daemonUC) }
+func (p overviewPage) Init() tea.Cmd { return tea.Batch(daemonInfoCmd(p.daemonUC), p.sp.Tick) }
 
 func (p overviewPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		p.sp, cmd = p.sp.Update(msg)
+		if p.loading {
+			return p, cmd
+		}
+		return p, nil
+
 	case tea.WindowSizeMsg:
 		p.width, p.height = msg.Width, msg.Height
 		return p, nil
@@ -84,7 +101,7 @@ func (p overviewPage) View() string {
 	b.WriteString("Overview\n\n")
 
 	if p.loading {
-		b.WriteString("Loading...\n")
+		b.WriteString(fmt.Sprintf("%s Loading...\n", p.sp.View()))
 		return b.String()
 	}
 
