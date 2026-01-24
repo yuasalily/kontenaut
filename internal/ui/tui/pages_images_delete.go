@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -40,6 +41,8 @@ type imagesDeletePage struct {
 
 	gkm globalKeyMap
 	km  imagesKeyMap
+
+	sp spinner.Model
 }
 
 // compile-time interface check
@@ -55,6 +58,7 @@ func newImagesDeletePage(gkm globalKeyMap, imagesUC *usecase.ImageUsecase) Page 
 		busy:        map[string]struct{}{},
 		gkm:         gkm,
 		km:          newImagesKeyMap(),
+		sp:          newLoadingSpinner(),
 	}
 }
 
@@ -62,11 +66,20 @@ func (p imagesDeletePage) Init() tea.Cmd {
 	return tea.Batch(
 		listImagesCmd(p.imageUC),
 		listLockedImagesCmd(p.imageUC),
+		p.sp.Tick,
 	)
 }
 
 func (p imagesDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		p.sp, cmd = p.sp.Update(msg)
+		if p.loading {
+			return p, cmd
+		}
+		return p, nil
+
 	case tea.WindowSizeMsg:
 		p.width, p.height = msg.Width, msg.Height
 		p = p.applyTableLayout()
@@ -153,7 +166,7 @@ func (p imagesDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 
 func (p imagesDeletePage) View() string {
 	if p.loading {
-		return "Loading..."
+		return fmt.Sprintf("%s Loading...\n", p.sp.View())
 	}
 	if p.deleting {
 		return "Deleting..."
