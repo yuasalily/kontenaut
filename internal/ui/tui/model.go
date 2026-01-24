@@ -68,19 +68,20 @@ func (m routerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// - Dialogs should intercept key events and prevent them from reaching pages.
 
 	// ウィンドウサイズの処理
-	if handled, cmd := m.handleWindowSize(msg); handled {
-		return m, cmd
+	if nm, handled, cmd := m.handleWindowSize(msg); handled {
+		return nm, cmd
 	}
 
 	// グローバルキーの処理
-	if handled, cmd := m.handleGlobalKeys(msg); handled {
-		return m, cmd
+	if nm, handled, cmd := m.handleGlobalKeys(msg); handled {
+		return nm, cmd
 	}
 
 	// ダイアログの処理
-	if handled, cmd := m.handleDialog(msg); handled {
-		return m, cmd
+	if nm, handled, cmd := m.handleDialog(msg); handled {
+		return nm, cmd
 	}
+
 	// ページの処理
 	return m.updateNormal(msg)
 }
@@ -92,51 +93,63 @@ func (m routerModel) View() string {
 	return m.normalView()
 }
 
-func (m *routerModel) handleGlobalKeys(msg tea.Msg) (bool, tea.Cmd) {
-	km, ok := msg.(tea.KeyMsg)
+func (m routerModel) handleWindowSize(msg tea.Msg) (routerModel, bool, tea.Cmd) {
+	ws, ok := msg.(tea.WindowSizeMsg)
 	if !ok {
-		return false, nil
+		return m, false, nil
 	}
-	if key.Matches(km, m.km.Quit) {
-		return true, tea.Quit
-	}
-	return false, nil
+
+	m.width, m.height = ws.Width, ws.Height
+	m = m.applyWindowSizeToCurrentPage()
+	m = m.applyWindowSizeToDialog()
+	return m, true, nil
 }
 
-func (m *routerModel) handleDialog(msg tea.Msg) (bool, tea.Cmd) {
+func (m routerModel) handleGlobalKeys(msg tea.Msg) (routerModel, bool, tea.Cmd) {
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, false, nil
+	}
+	if key.Matches(km, m.km.Quit) {
+		return m, true, tea.Quit
+	}
+	return m, false, nil
+}
+
+func (m routerModel) handleDialog(msg tea.Msg) (routerModel, bool, tea.Cmd) {
 	// ダイアログのオープン
 	switch x := msg.(type) {
 	case openDialogMsg:
 		m.modal = modalSession{
 			dialog: newDialog(x.kind, x.title, x.body),
 		}
-		m.applyWindowSizeToDialog()
-		return true, nil
+		m = m.applyWindowSizeToDialog()
+		return m, true, nil
 	case openConfirmDialogMsg:
 		m.modal = modalSession{
 			dialog: newDialog(dialogConfirm, x.title, x.body),
 			yesMsg: x.yesMsg,
 			noMsg:  x.noMsg,
 		}
-		m.applyWindowSizeToDialog()
-		return true, nil
+		m = m.applyWindowSizeToDialog()
+		return m, true, nil
 	}
 
 	// モーダルが無ければ処理しない
 	if m.modal.dialog == nil {
-		return false, nil
+		return m, false, nil
 	}
 
 	// モーダル表示中はKeyMsgを他ページに流さない
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
-		return true, nil
+		return m, true, nil
 	}
 
 	// 確認ダイアログの結果がokResultに格納される
 	closed, okResult := m.modal.dialog.Update(km)
 	if !closed {
-		return true, nil
+		return m, true, nil
 	}
 
 	// モーダルのクローズ処理
@@ -145,26 +158,14 @@ func (m *routerModel) handleDialog(msg tea.Msg) (bool, tea.Cmd) {
 
 	if okResult {
 		if s.yesMsg == nil {
-			return true, nil
+			return m, true, nil
 		}
-		return true, func() tea.Msg { return s.yesMsg }
+		return m, true, func() tea.Msg { return s.yesMsg }
 	}
 	if s.noMsg == nil {
-		return true, nil
+		return m, true, nil
 	}
-	return true, func() tea.Msg { return s.noMsg }
-}
-
-func (m *routerModel) handleWindowSize(msg tea.Msg) (bool, tea.Cmd) {
-	ws, ok := msg.(tea.WindowSizeMsg)
-	if !ok {
-		return false, nil
-	}
-
-	m.width, m.height = ws.Width, ws.Height
-	m.applyWindowSizeToCurrentPage()
-	m.applyWindowSizeToDialog()
-	return true, nil
+	return m, true, func() tea.Msg { return s.noMsg }
 }
 
 func (m routerModel) closeCurrentPageCmd() tea.Cmd {
@@ -198,7 +199,7 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		closeCmd := m.closeCurrentPageCmd()
 		m.currentPageID = pageImages
 		m.currentPage = newImagesDeletePage(m.km, m.imageUC)
-		m.applyWindowSizeToCurrentPage()
+		m = m.applyWindowSizeToCurrentPage()
 		return m, tea.Batch(closeCmd, m.currentPage.Init())
 
 	case openContainersDeleteMsg:
@@ -206,7 +207,7 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		closeCmd := m.closeCurrentPageCmd()
 		m.currentPageID = pageContainers
 		m.currentPage = newContainersDeletePage(m.km, m.containerUC)
-		m.applyWindowSizeToCurrentPage()
+		m = m.applyWindowSizeToCurrentPage()
 		return m, tea.Batch(closeCmd, m.currentPage.Init())
 
 	case openLogsMsg:
@@ -216,7 +217,7 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		closeCmd := m.closeCurrentPageCmd()
 		m.currentPageID = pageContainers
 		m.currentPage = newLogsPage(m.km, m.containerUC, msg.id, msg.name)
-		m.applyWindowSizeToCurrentPage()
+		m = m.applyWindowSizeToCurrentPage()
 		return m, tea.Batch(closeCmd, m.currentPage.Init())
 
 	case navigateMsg:
@@ -231,19 +232,19 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case pageOverview:
 			m.currentPageID = pageOverview
 			m.currentPage = newOverviewPage(m.km, m.daemonUC)
-			m.applyWindowSizeToCurrentPage()
+			m = m.applyWindowSizeToCurrentPage()
 			return m, tea.Batch(closeCmd, m.currentPage.Init())
 
 		case pageImages:
 			m.currentPageID = pageImages
 			m.currentPage = newImagesPage(m.km, m.imageUC)
-			m.applyWindowSizeToCurrentPage()
+			m = m.applyWindowSizeToCurrentPage()
 			return m, tea.Batch(closeCmd, m.currentPage.Init())
 
 		case pageContainers:
 			m.currentPageID = pageContainers
 			m.currentPage = newContainersPage(m.km, m.containerUC)
-			m.applyWindowSizeToCurrentPage()
+			m = m.applyWindowSizeToCurrentPage()
 			return m, tea.Batch(closeCmd, m.currentPage.Init())
 		}
 	}
@@ -269,9 +270,9 @@ func (m routerModel) normalView() string {
 	return lipgloss.JoinVertical(lipgloss.Left, nav, page)
 }
 
-func (m *routerModel) applyWindowSizeToCurrentPage() {
+func (m routerModel) applyWindowSizeToCurrentPage() routerModel {
 	if m.width <= 0 || m.height <= 0 {
-		return
+		return m
 	}
 	h := max(m.height-m.nav.Height(), 1)
 	updated, _ := m.currentPage.Update(tea.WindowSizeMsg{
@@ -279,17 +280,19 @@ func (m *routerModel) applyWindowSizeToCurrentPage() {
 		Height: h,
 	})
 	m.currentPage = updated
+	return m
 }
 
-func (m *routerModel) applyWindowSizeToDialog() {
+func (m routerModel) applyWindowSizeToDialog() routerModel {
 	if m.modal.dialog == nil {
-		return
+		return m
 	}
 	if m.width <= 0 || m.height <= 0 {
-		return
+		return m
 	}
 	_, _ = m.modal.dialog.Update(tea.WindowSizeMsg{
 		Width:  m.width,
 		Height: m.height,
 	})
+	return m
 }
