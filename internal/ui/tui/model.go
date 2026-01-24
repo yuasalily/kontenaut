@@ -29,6 +29,10 @@ type routerModel struct {
 	currentPage   Page
 
 	modal modalSession
+
+	// globalBusy blocks router-level navigation (1/2/3) during destructive operations.
+	// Quit and dialogs remain available.
+	globalBusy bool
 }
 
 // compile-time interface check
@@ -173,13 +177,19 @@ func (m routerModel) closeCurrentPageCmd() tea.Cmd {
 
 func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case setGlobalBusyMsg:
+		m.globalBusy = msg.on
+		return m, nil
+
 	case tea.KeyMsg:
+		// Block router-level navigation while busy.
+		// Note: quit is handled earlier by handleGlobalKeys and remains available.
 		switch {
-		case key.Matches(msg, m.km.NavOverview):
+		case key.Matches(msg, m.km.NavOverview) && !m.globalBusy:
 			return m, func() tea.Msg { return navigateMsg{to: pageOverview} }
-		case key.Matches(msg, m.km.NavImages):
+		case key.Matches(msg, m.km.NavImages) && !m.globalBusy:
 			return m, func() tea.Msg { return navigateMsg{to: pageImages} }
-		case key.Matches(msg, m.km.NavContainers):
+		case key.Matches(msg, m.km.NavContainers) && !m.globalBusy:
 			return m, func() tea.Msg { return navigateMsg{to: pageContainers} }
 		}
 
