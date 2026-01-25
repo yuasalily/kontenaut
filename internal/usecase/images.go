@@ -27,12 +27,12 @@ func (u *ImageUsecase) Delete(ctx context.Context, imageID string) error {
 }
 
 
-// LockedImageIDs returns image IDs that are currently references by any container.
+// NonDeletableImageIDs returns image IDs that are currently references by any container.
 //
 // Why:
 // - Docker prevents deleting images that are in use.
-// - The UI marks such images as locked and skips selection/deletion to avoid noisy errors.
-func (u *ImageUsecase) LockedImageIDs(ctx context.Context) (map[string]struct{}, error) {
+// - The UI marks such images as non-deletable and skips selection/deletion to avoid noisy errors.
+func (u *ImageUsecase) NonDeletableImageIDs(ctx context.Context) (map[string]struct{}, error) {
 	containers, err := u.eng.ListContainers(ctx)
 	if err != nil {
 		return nil, err

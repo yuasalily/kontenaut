@@ -28,14 +28,17 @@ func listImagesCmd(imageUC *usecase.ImageUsecase) tea.Cmd {
 	}
 }
 
+// lockedImagesLoadedMsg is kept as message type name to churn in page code paths
+// that already pattern-match on this symbol. It represents "non-deletable image IDs"
+// (images referenced by any container).
 type lockedImagesLoadedMsg map[string]struct{}
-type lockedImagesLoadFailedMsg struct{ err error }
+type nonDeletableImagesLoadFailedMsg struct{ err error }
 
-func listLockedImagesCmd(imageUC *usecase.ImageUsecase) tea.Cmd {
+func listNonDeletableImagesCmd(imageUC *usecase.ImageUsecase) tea.Cmd {
 	return func() tea.Msg {
-		locked, err := imageUC.LockedImageIDs(context.Background())
+		locked, err := imageUC.NonDeletableImageIDs(context.Background())
 		if err != nil {
-			return lockedImagesLoadFailedMsg{err: err}
+			return nonDeletableImagesLoadFailedMsg{err: err}
 		}
 		return lockedImagesLoadedMsg(locked)
 	}

@@ -30,7 +30,7 @@ type imagesPage struct {
 
 	imagesTable table.Model
 
-	locked map[string]struct{}
+	nonDeletable map[string]struct{}
 
 	gkm globalKeyMap
 	km  imagesKeyMap
@@ -43,20 +43,20 @@ var _ Page = imagesPage{}
 
 func newImagesPage(gkm globalKeyMap, imageUC *usecase.ImageUsecase) Page {
 	return imagesPage{
-		imageUC:     imageUC,
-		loading:     true,
-		imagesTable: newImagesTableNormal(),
-		locked:      map[string]struct{}{},
-		gkm:         gkm,
-		km:          newImagesKeyMap(),
-		sp:          newLoadingSpinner(),
+		imageUC:      imageUC,
+		loading:      true,
+		imagesTable:  newImagesTableNormal(),
+		nonDeletable: map[string]struct{}{},
+		gkm:          gkm,
+		km:           newImagesKeyMap(),
+		sp:           newLoadingSpinner(),
 	}
 }
 
 func (p imagesPage) Init() tea.Cmd {
 	return tea.Batch(
 		listImagesCmd(p.imageUC),
-		listLockedImagesCmd(p.imageUC),
+		listNonDeletableImagesCmd(p.imageUC),
 		p.sp.Tick,
 	)
 }
@@ -93,10 +93,11 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
 
 	case lockedImagesLoadedMsg:
-		p.locked = map[string]struct{}(msg)
+		// Keep policy decisions in policy_images.go.
+		p.nonDeletable = nonDeletableImageIDs(map[string]struct{}(msg))
 		return p, nil
 
-	case lockedImagesLoadFailedMsg:
+	case nonDeletableImagesLoadFailedMsg:
 		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
 
 	case deleteSingleImagesConfirmedMsg:
@@ -112,7 +113,7 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case imagesDeletedMsg:
 		p.deleting = false
 		p.loading = true
-		p.locked = map[string]struct{}{}
+		p.nonDeletable = map[string]struct{}{}
 
 		var dlt tea.Cmd
 		if msg.failed == 0 {
@@ -126,7 +127,7 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		}
 		return p, tea.Sequence(
 			setGlobalBusyCmd(false),
-			tea.Batch(listImagesCmd(p.imageUC), listLockedImagesCmd(p.imageUC)),
+			tea.Batch(listImagesCmd(p.imageUC), listNonDeletableImagesCmd(p.imageUC)),
 			dlt,
 		)
 	}
@@ -170,7 +171,7 @@ func (p imagesPage) handleKey(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, p.km.Refresh):
 		p.loading = true
-		p.locked = map[string]struct{}{}
+		p.nonDeletable = map[string]struct{}{}
 		return p, p.Init(), true
 
 	case key.Matches(msg, p.km.EnterDeleteMode):
@@ -181,8 +182,8 @@ func (p imagesPage) handleKey(msg tea.KeyMsg) (imagesPage, tea.Cmd, bool) {
 		if !ok {
 			return p, nil, true
 		}
-		if p.isLocked(id) {
-			return p, openDialogCmd(dialogInfo, "Images", "this image is in use and cannot be selected."), true
+		if !canDeleteImage(id, p.nonDeletable) {
+			return p, openDialogCmd(dialogInfo, "Images", "this image is in use and cannot be deleted."), true
 		}
 		return p, openConfirmDialogCmd(
 			"Images",
@@ -265,11 +266,6 @@ func rowsFromImageSummariesNormal(items []engine.ImageSummary, cols []table.Colu
 		out = append(out, row)
 	}
 	return out
-}
-
-func (p imagesPage) isLocked(id string) bool {
-	_, ok := p.locked[id]
-	return ok
 }
 
 func (p imagesPage) cursorImageID() (string, bool) {

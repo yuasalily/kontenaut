@@ -36,7 +36,7 @@ type containersDeletePage struct {
 	containersTable table.Model
 
 	selected map[string]struct{}
-	locked   map[string]struct{}
+	nonDeletable   map[string]struct{}
 	busy     map[string]struct{}
 
 	gkm globalKeyMap
@@ -54,7 +54,7 @@ func newContainersDeletePage(gkm globalKeyMap, containerUC *usecase.ContainerUse
 		loading:         true,
 		containersTable: newContainersTableDelete(),
 		selected:        map[string]struct{}{},
-		locked:          map[string]struct{}{},
+		nonDeletable:          map[string]struct{}{},
 		busy:            map[string]struct{}{},
 		gkm:             gkm,
 		km:              newContainersKeyMap(),
@@ -93,12 +93,12 @@ func (p containersDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case containersLoadedMsg:
 		p = p.setIdle()
 		p.containers = []engine.ContainerSummary(msg)
-		p.locked = nonDeletableContainerIDs(p.containers)
+		p.nonDeletable = nonDeletableContainerIDs(p.containers)
 		p.containersTable.SetRows(rowsFromContainerSummariesDelete(
 			p.containers,
 			p.containersTable.Columns(),
 			p.selected,
-			p.locked,
+			p.nonDeletable,
 			p.busy,
 		))
 		return p, nil
@@ -123,7 +123,7 @@ func (p containersDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p.loading = true
 		p.selected = map[string]struct{}{}
 		p.busy = map[string]struct{}{}
-		p.locked = map[string]struct{}{}
+		p.nonDeletable = map[string]struct{}{}
 
 		var dlt tea.Cmd
 		if msg.failed == 0 {
@@ -188,7 +188,7 @@ func (p containersDeletePage) applyTableLayout() containersDeletePage {
 	cols := columnsForContainersDeleteWidth(p.width)
 	p.containersTable.SetColumns(cols)
 	if len(p.containers) > 0 {
-		p.containersTable.SetRows(rowsFromContainerSummariesDelete(p.containers, cols, p.selected, p.locked, p.busy))
+		p.containersTable.SetRows(rowsFromContainerSummariesDelete(p.containers, cols, p.selected, p.nonDeletable, p.busy))
 	}
 	return p
 }
@@ -211,7 +211,7 @@ func (p containersDeletePage) handleKey(msg tea.KeyMsg) (containersDeletePage, t
 		p.loading = true
 		p.selected = map[string]struct{}{}
 		p.busy = map[string]struct{}{}
-		p.locked = map[string]struct{}{}
+		p.nonDeletable = map[string]struct{}{}
 		return p, p.Init(), true
 
 	case key.Matches(msg, p.km.Select):
@@ -219,7 +219,7 @@ func (p containersDeletePage) handleKey(msg tea.KeyMsg) (containersDeletePage, t
 		if !ok {
 			return p, nil, true
 		}
-		if _, locked := p.locked[c.ID]; locked {
+		if _, nd := p.nonDeletable[c.ID]; nd {
 			// Running containers are not selectable/deletable.
 			return p, nil, true
 		}
@@ -230,13 +230,13 @@ func (p containersDeletePage) handleKey(msg tea.KeyMsg) (containersDeletePage, t
 		} else {
 			p.selected[c.ID] = struct{}{}
 		}
-		p.containersTable.SetRows(rowsFromContainerSummariesDelete(p.containers, p.containersTable.Columns(), p.selected, p.locked, p.busy))
+		p.containersTable.SetRows(rowsFromContainerSummariesDelete(p.containers, p.containersTable.Columns(), p.selected, p.nonDeletable, p.busy))
 		return p, nil, true
 
 	case key.Matches(msg, p.km.Execute):
 		ids := make([]string, 0, len(p.selected))
 		for id := range p.selected {
-			if _, ok := p.locked[id]; ok {
+			if _, nd := p.nonDeletable[id]; nd {
 				continue
 			}
 			ids = append(ids, id)
@@ -316,7 +316,7 @@ func rowsFromContainerSummariesDelete(
 	items []engine.ContainerSummary,
 	cols []table.Column,
 	selected map[string]struct{},
-	locked map[string]struct{},
+	nonDeletable map[string]struct{},
 	busy map[string]struct{},
 ) []table.Row {
 	selW := colWidth(cols, 0, 4)
@@ -327,7 +327,7 @@ func rowsFromContainerSummariesDelete(
 
 	out := make([]table.Row, 0, len(items))
 	for _, c := range items {
-		sel := deleteSelMark(c.ID, selected, locked, busy)
+		sel := deleteSelMark(c.ID, selected, nonDeletable, busy)
 
 		out = append(out, table.Row{
 			truncText(sel, selW),
