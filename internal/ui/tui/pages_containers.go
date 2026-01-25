@@ -219,7 +219,7 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 		if !ok {
 			return p, nil, true
 		}
-		if !canDeleteContainer(c.ID) {
+		if !canDeleteContainer(c.State) {
 			return p, openDialogCmd(dialogInfo, "Containers", "this container is running and cannot be deleted."), true
 		}
 		return p, openConfirmDialogCmd(

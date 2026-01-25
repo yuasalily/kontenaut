@@ -36,7 +36,7 @@ type imagesDeletePage struct {
 	imagesTable table.Model
 
 	selected map[string]struct{}
-	locked   map[string]struct{}
+	nonDeletable   map[string]struct{}
 	busy     map[string]struct{}
 
 	gkm globalKeyMap
@@ -54,7 +54,7 @@ func newImagesDeletePage(gkm globalKeyMap, imagesUC *usecase.ImageUsecase) Page 
 		loading:     true,
 		imagesTable: newImagesTableDelete(),
 		selected:    map[string]struct{}{},
-		locked:      map[string]struct{}{},
+		nonDeletable:      map[string]struct{}{},
 		busy:        map[string]struct{}{},
 		gkm:         gkm,
 		km:          newImagesKeyMap(),
@@ -65,7 +65,7 @@ func newImagesDeletePage(gkm globalKeyMap, imagesUC *usecase.ImageUsecase) Page 
 func (p imagesDeletePage) Init() tea.Cmd {
 	return tea.Batch(
 		listImagesCmd(p.imageUC),
-		listLockedImagesCmd(p.imageUC),
+		listNonDeletableImagesCmd(p.imageUC),
 		p.sp.Tick,
 	)
 }
@@ -98,7 +98,7 @@ func (p imagesDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			p.images,
 			p.imagesTable.Columns(),
 			p.selected,
-			p.locked,
+			p.nonDeletable,
 			p.busy,
 		))
 		return p, nil
@@ -108,19 +108,19 @@ func (p imagesDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
 
 	case lockedImagesLoadedMsg:
-		p.locked = map[string]struct{}(msg)
+		p.nonDeletable = nonDeletableImageIDs(map[string]struct{}(msg))
 		if len(p.images) > 0 {
 			p.imagesTable.SetRows(rowsFromImageSummariesDelete(
 				p.images,
 				p.imagesTable.Columns(),
 				p.selected,
-				p.locked,
+				p.nonDeletable,
 				p.busy,
 			))
 		}
 		return p, nil
 
-	case lockedImagesLoadFailedMsg:
+	case nonDeletableImagesLoadFailedMsg:
 		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
 
 	case deleteSelectedImagesConfirmedMsg:
@@ -139,7 +139,7 @@ func (p imagesDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p.loading = true
 		p.selected = map[string]struct{}{}
 		p.busy = map[string]struct{}{}
-		p.locked = map[string]struct{}{}
+		p.nonDeletable = map[string]struct{}{}
 
 		var dlt tea.Cmd
 		if msg.failed == 0 {
@@ -154,7 +154,7 @@ func (p imagesDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		// Stay in delete page after operation.
 		return p, tea.Sequence(
 			setGlobalBusyCmd(false),
-			tea.Batch(listImagesCmd(p.imageUC), listLockedImagesCmd(p.imageUC)),
+			tea.Batch(listImagesCmd(p.imageUC), listNonDeletableImagesCmd(p.imageUC)),
 			dlt,
 		)
 	}
@@ -204,7 +204,7 @@ func (p imagesDeletePage) applyTableLayout() imagesDeletePage {
 	cols := columnsForImagesDeleteWidth(p.width)
 	p.imagesTable.SetColumns(cols)
 	if len(p.images) > 0 {
-		p.imagesTable.SetRows(rowsFromImageSummariesDelete(p.images, cols, p.selected, p.locked, p.busy))
+		p.imagesTable.SetRows(rowsFromImageSummariesDelete(p.images, cols, p.selected, p.nonDeletable, p.busy))
 	}
 	return p
 }
@@ -219,7 +219,7 @@ func (p imagesDeletePage) handleKey(msg tea.KeyMsg) (imagesDeletePage, tea.Cmd, 
 		p.loading = true
 		p.selected = map[string]struct{}{}
 		p.busy = map[string]struct{}{}
-		p.locked = map[string]struct{}{}
+		p.nonDeletable = map[string]struct{}{}
 		return p, p.Init(), true
 
 	case key.Matches(msg, p.km.Select):
@@ -227,8 +227,8 @@ func (p imagesDeletePage) handleKey(msg tea.KeyMsg) (imagesDeletePage, tea.Cmd, 
 		if !ok {
 			return p, nil, true
 		}
-		if _, locked := p.locked[id]; locked {
-			// Locked images are not selectable/deletable.
+		if !canDeleteImage(id, p.nonDeletable) {
+			// Non-deletable images are not selectable/deletable.
 			return p, nil, true
 		}
 		if _, busy := p.busy[id]; busy {
@@ -241,13 +241,13 @@ func (p imagesDeletePage) handleKey(msg tea.KeyMsg) (imagesDeletePage, tea.Cmd, 
 		} else {
 			p.selected[id] = struct{}{}
 		}
-		p.imagesTable.SetRows(rowsFromImageSummariesDelete(p.images, p.imagesTable.Columns(), p.selected, p.locked, p.busy))
+		p.imagesTable.SetRows(rowsFromImageSummariesDelete(p.images, p.imagesTable.Columns(), p.selected, p.nonDeletable, p.busy))
 		return p, nil, true
 
 	case key.Matches(msg, p.km.Execute):
 		ids := make([]string, 0, len(p.selected))
 		for id := range p.selected {
-			if _, ok := p.locked[id]; ok {
+			if !canDeleteImage(id, p.nonDeletable) {
 				continue
 			}
 			ids = append(ids, id)
@@ -327,7 +327,7 @@ func rowsFromImageSummariesDelete(
 	items []engine.ImageSummary,
 	cols []table.Column,
 	selected map[string]struct{},
-	locked map[string]struct{},
+	nonDeletable map[string]struct{},
 	busy map[string]struct{},
 ) []table.Row {
 	selW := colWidth(cols, 0, 4)
@@ -338,7 +338,7 @@ func rowsFromImageSummariesDelete(
 
 	out := make([]table.Row, 0, len(items))
 	for _, img := range items {
-		sel := deleteSelMark(img.ID, selected, locked, busy)
+		sel := deleteSelMark(img.ID, selected, nonDeletable, busy)
 
 		// Why trim sha256 prefix:
 		// - Docker image IDs are long; trimming improves table readability.

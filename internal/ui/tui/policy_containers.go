@@ -19,7 +19,7 @@ func canDeleteContainer(state string) bool {
 	// Minimal policy (initial):
 	// - running: delete not allowed (no force delete in this app)
 	// - other states: delete allowed
-	return state == "running"
+	return state != "running"
 }
 
 // nonDeletableContainerIDs returns IDs of containers that cannot be deleted by policy.
