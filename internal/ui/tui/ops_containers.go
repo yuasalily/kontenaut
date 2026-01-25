@@ -39,6 +39,7 @@ func deleteContainersCmd(containerUC *usecase.ContainerUsecase, ids []string) te
 		deleted := 0
 		failed := 0
 		var firstErr error
+
 		for _, id := range ids {
 			if err := containerUC.Delete(context.Background(), id); err != nil {
 				failed++
@@ -57,15 +58,39 @@ func deleteContainersCmd(containerUC *usecase.ContainerUsecase, ids []string) te
 	}
 }
 
-type containerStartedMsg struct {
-	id   string
-	name string
-	err  error
+type containersStartedMsg struct {
+	started  int
+	failed   int
+	firstErr error
 }
 
-func startContainerCmd(containerUC *usecase.ContainerUsecase, id, name string) tea.Cmd {
+// startContainersCmd starts containers sequentially.
+//
+// Why sequential + counts:
+// - Keep the initial behavior consistent with deleteContainersCmd.
+// - Provide a simple, UI-friendly summary (started/failed + first error).
+// - Avoid overwhelming the daemon with consurrent requests (initial policy).
+func startContainersCmd(containerUC *usecase.ContainerUsecase, ids []string) tea.Cmd {
 	return func() tea.Msg {
-		err := containerUC.Start(context.Background(), id)
-		return containerStartedMsg{id: id, name: name, err: err}
+		started := 0
+		failed := 0
+		var firstErr error
+
+		for _, id := range ids {
+			if err := containerUC.Start(context.Background(), id); err != nil {
+				failed++
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			started++
+		}
+
+		return containersStartedMsg{
+			started:  started,
+			failed:   failed,
+			firstErr: firstErr,
+		}
 	}
 }

@@ -13,20 +13,20 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
-type deleteSelectedContainersConfirmedMsg struct {
+type startSelectedContainersConfirmedMsg struct {
 	ids []string
 }
 
-// containersDeletePage renders Containers delete mode as a separate page.
+// containersStartPage renders Containers start mode as a separate page.
 //
 // Why:
-// - Delete mode has different UI behaviors (selection/execute) and minimal shared state.
+// - Start mode has different UI behaviors (selection/execute) and minimal shared state.
 // - Keeping it as separate page reduces branching in the normal Containers page.
-type containersDeletePage struct {
+type containersStartPage struct {
 	containerUC *usecase.ContainerUsecase
 
 	loading  bool
-	deleting bool
+	starting bool
 
 	containers []engine.ContainerSummary
 
@@ -36,7 +36,7 @@ type containersDeletePage struct {
 	containersTable table.Model
 
 	selected     map[string]struct{}
-	nonDeletable map[string]struct{}
+	nonStartable map[string]struct{}
 	busy         map[string]struct{}
 
 	gkm globalKeyMap
@@ -46,15 +46,15 @@ type containersDeletePage struct {
 }
 
 // compile-time interface check
-var _ Page = containersDeletePage{}
+var _ Page = containersStartPage{}
 
-func newContainersDeletePage(gkm globalKeyMap, containerUC *usecase.ContainerUsecase) Page {
-	return containersDeletePage{
+func newContainersStartPage(gkm globalKeyMap, containerUC *usecase.ContainerUsecase) Page {
+	return containersStartPage{
 		containerUC:     containerUC,
 		loading:         true,
-		containersTable: newContainersTableDelete(),
+		containersTable: newContainersTableStart(),
 		selected:        map[string]struct{}{},
-		nonDeletable:    map[string]struct{}{},
+		nonStartable:    map[string]struct{}{},
 		busy:            map[string]struct{}{},
 		gkm:             gkm,
 		km:              newContainersKeyMap(),
@@ -62,14 +62,14 @@ func newContainersDeletePage(gkm globalKeyMap, containerUC *usecase.ContainerUse
 	}
 }
 
-func (p containersDeletePage) Init() tea.Cmd {
+func (p containersStartPage) Init() tea.Cmd {
 	return tea.Batch(
 		listContainersCmd(p.containerUC),
 		p.sp.Tick,
 	)
 }
 
-func (p containersDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
+func (p containersStartPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -93,12 +93,12 @@ func (p containersDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case containersLoadedMsg:
 		p = p.setIdle()
 		p.containers = []engine.ContainerSummary(msg)
-		p.nonDeletable = nonDeletableContainerIDs(p.containers)
-		p.containersTable.SetRows(rowsFromContainerSummariesDelete(
+		p.nonStartable = nonStartableContainerIDs(p.containers)
+		p.containersTable.SetRows(rowsFromContainerSummariesStart(
 			p.containers,
 			p.containersTable.Columns(),
 			p.selected,
-			p.nonDeletable,
+			p.nonStartable,
 			p.busy,
 		))
 		return p, nil
@@ -107,35 +107,35 @@ func (p containersDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p = p.setIdle()
 		return p, openDialogCmd(dialogError, "Containers", msg.err.Error())
 
-	case deleteSelectedContainersConfirmedMsg:
+	case startSelectedContainersConfirmedMsg:
 		if len(msg.ids) == 0 {
 			return p, nil
 		}
-		p.deleting = true
+		p.starting = true
 		p.busy = toIDSet(msg.ids)
 		return p, tea.Sequence(
 			setGlobalBusyCmd(true),
-			deleteContainersCmd(p.containerUC, msg.ids),
+			startContainersCmd(p.containerUC, msg.ids),
 		)
 
-	case containersDeletedMsg:
-		p.deleting = false
+	case containersStartedMsg:
+		p.starting = false
 		p.loading = true
 		p.selected = map[string]struct{}{}
 		p.busy = map[string]struct{}{}
-		p.nonDeletable = map[string]struct{}{}
+		p.nonStartable = map[string]struct{}{}
 
 		var dlt tea.Cmd
 		if msg.failed == 0 {
-			dlt = openDialogCmd(dialogInfo, "Containers", fmt.Sprintf("Deleted %d container(s)", msg.deleted))
+			dlt = openDialogCmd(dialogInfo, "Containers", fmt.Sprintf("Started %d container(s)", msg.started))
 		} else {
-			body := fmt.Sprintf("Deleted %d container(s). Failed %d container(s).", msg.deleted, msg.failed)
+			body := fmt.Sprintf("Started %d container(s). Failed %d container(s).", msg.started, msg.failed)
 			if msg.firstErr != nil {
 				body = fmt.Sprintf("%s\n\n%s", body, msg.firstErr.Error())
 			}
 			dlt = openDialogCmd(dialogError, "Containers", body)
 		}
-		// Stay in delete page after operation.
+		// Stay in start page after operation.
 		return p, tea.Sequence(
 			setGlobalBusyCmd(false),
 			listContainersCmd(p.containerUC),
@@ -148,16 +148,16 @@ func (p containersDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	return p, cmd
 }
 
-func (p containersDeletePage) View() string {
+func (p containersStartPage) View() string {
 	if p.loading {
 		return fmt.Sprintf("%s Loading...\n", p.sp.View())
 	}
-	if p.deleting {
-		return "Deleting..."
+	if p.starting {
+		return "Starting..."
 	}
 
 	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Containers [DELETE MODE]") + "\n")
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Containers [START MODE]") + "\n")
 	b.WriteString(p.containersTable.View())
 
 	footer := renderHelpBlock(
@@ -176,7 +176,7 @@ func (p containersDeletePage) View() string {
 	return b.String()
 }
 
-func (p containersDeletePage) applyTableLayout() containersDeletePage {
+func (p containersStartPage) applyTableLayout() containersStartPage {
 	if p.width <= 0 || p.height <= 0 {
 		return p
 	}
@@ -185,22 +185,22 @@ func (p containersDeletePage) applyTableLayout() containersDeletePage {
 	p.containersTable.SetWidth(p.width)
 	p.containersTable.SetHeight(tableHeight)
 
-	cols := columnsForContainersDeleteWidth(p.width)
+	cols := columnsForContainersStartWidth(p.width)
 	p.containersTable.SetColumns(cols)
 	if len(p.containers) > 0 {
-		p.containersTable.SetRows(rowsFromContainerSummariesDelete(p.containers, cols, p.selected, p.nonDeletable, p.busy))
+		p.containersTable.SetRows(rowsFromContainerSummariesStart(p.containers, cols, p.selected, p.nonStartable, p.busy))
 	}
 	return p
 }
 
-func (p containersDeletePage) handleKey(msg tea.KeyMsg) (containersDeletePage, tea.Cmd, bool) {
-	if p.loading || p.deleting {
+func (p containersStartPage) handleKey(msg tea.KeyMsg) (containersStartPage, tea.Cmd, bool) {
+	if p.loading || p.starting {
 		return p, nil, false
 	}
 
 	switch {
 	case msg.Type == tea.KeyEnter:
-		// no-op: delete mode does not use Enter.
+		// no-op: start mode does not use Enter.
 		//
 		// Why:
 		// - Execute is bound explicitly (e.g. "x") to reduce accidental execution.
@@ -212,7 +212,7 @@ func (p containersDeletePage) handleKey(msg tea.KeyMsg) (containersDeletePage, t
 		p.loading = true
 		p.selected = map[string]struct{}{}
 		p.busy = map[string]struct{}{}
-		p.nonDeletable = map[string]struct{}{}
+		p.nonStartable = map[string]struct{}{}
 		return p, p.Init(), true
 
 	case key.Matches(msg, p.km.Select):
@@ -220,8 +220,8 @@ func (p containersDeletePage) handleKey(msg tea.KeyMsg) (containersDeletePage, t
 		if !ok {
 			return p, nil, true
 		}
-		if _, nd := p.nonDeletable[c.ID]; nd {
-			// Running containers are not selectable/deletable.
+		if _, ns := p.nonStartable[c.ID]; ns {
+			// Running containers are not selectable/startable.
 			return p, nil, true
 		}
 
@@ -231,13 +231,13 @@ func (p containersDeletePage) handleKey(msg tea.KeyMsg) (containersDeletePage, t
 		} else {
 			p.selected[c.ID] = struct{}{}
 		}
-		p.containersTable.SetRows(rowsFromContainerSummariesDelete(p.containers, p.containersTable.Columns(), p.selected, p.nonDeletable, p.busy))
+		p.containersTable.SetRows(rowsFromContainerSummariesStart(p.containers, p.containersTable.Columns(), p.selected, p.nonStartable, p.busy))
 		return p, nil, true
 
 	case key.Matches(msg, p.km.Execute):
 		ids := make([]string, 0, len(p.selected))
 		for id := range p.selected {
-			if _, nd := p.nonDeletable[id]; nd {
+			if _, ns := p.nonStartable[id]; ns {
 				continue
 			}
 			ids = append(ids, id)
@@ -246,23 +246,23 @@ func (p containersDeletePage) handleKey(msg tea.KeyMsg) (containersDeletePage, t
 			// Spec: do nothing when none selected.
 			return p, nil, true
 		}
-		body := fmt.Sprintf("Delete %d container(s)?", len(ids))
+		body := fmt.Sprintf("Start %d container(s)?", len(ids))
 		return p, openConfirmDialogCmd(
 			"Containers",
 			body,
-			deleteSelectedContainersConfirmedMsg{ids: ids},
+			startSelectedContainersConfirmedMsg{ids: ids},
 			nil,
 		), true
 
 	case key.Matches(msg, p.km.Exit):
-		// Exit delete mode -> back to normal Containers page.
+		// Exit start mode -> back to normal Containers page.
 		return p, func() tea.Msg { return navigateMsg{to: pageContainers} }, true
 	}
 
 	return p, nil, false
 }
 
-func (p containersDeletePage) cursorContainer() (engine.ContainerSummary, bool) {
+func (p containersStartPage) cursorContainer() (engine.ContainerSummary, bool) {
 	if len(p.containers) == 0 {
 		return engine.ContainerSummary{}, false
 	}
@@ -273,14 +273,14 @@ func (p containersDeletePage) cursorContainer() (engine.ContainerSummary, bool) 
 	return p.containers[i], true
 }
 
-func (p containersDeletePage) setIdle() containersDeletePage {
+func (p containersStartPage) setIdle() containersStartPage {
 	p.loading = false
-	p.deleting = false
+	p.starting = false
 	return p
 }
 
-func newContainersTableDelete() table.Model {
-	cols := columnsForContainersDeleteWidth(0)
+func newContainersTableStart() table.Model {
+	cols := columnsForContainersStartWidth(0)
 	return table.New(
 		table.WithColumns(cols),
 		table.WithRows(nil),
@@ -288,7 +288,7 @@ func newContainersTableDelete() table.Model {
 	)
 }
 
-func columnsForContainersDeleteWidth(total int) []table.Column {
+func columnsForContainersStartWidth(total int) []table.Column {
 	const (
 		selW    = 4
 		idW     = 12
@@ -313,11 +313,11 @@ func columnsForContainersDeleteWidth(total int) []table.Column {
 	}
 }
 
-func rowsFromContainerSummariesDelete(
+func rowsFromContainerSummariesStart(
 	items []engine.ContainerSummary,
 	cols []table.Column,
 	selected map[string]struct{},
-	nonDeletable map[string]struct{},
+	nonStartable map[string]struct{},
 	busy map[string]struct{},
 ) []table.Row {
 	selW := colWidth(cols, 0, 4)
@@ -328,7 +328,7 @@ func rowsFromContainerSummariesDelete(
 
 	out := make([]table.Row, 0, len(items))
 	for _, c := range items {
-		sel := selMark(c.ID, selected, nonDeletable, busy)
+		sel := selMark(c.ID, selected, nonStartable, busy)
 
 		out = append(out, table.Row{
 			truncText(sel, selW),

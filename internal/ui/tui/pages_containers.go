@@ -131,22 +131,22 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p.starting = true
 		return p, tea.Sequence(
 			setGlobalBusyCmd(true),
-			startContainerCmd(p.containerUC, msg.id, msg.name),
+			startContainersCmd(p.containerUC, []string{msg.id}),
 		)
 
-	case containerStartedMsg:
+	case containersStartedMsg:
 		p.starting = false
 		p.loading = true
 
-		name := strings.TrimSpace(msg.name)
-		if name == "" {
-			name = "Unnamed"
-		}
 		var dlt tea.Cmd
-		if msg.err == nil {
-			dlt = openDialogCmd(dialogInfo, "Containers", fmt.Sprintf("Started container %q.", name))
+		if msg.failed == 0 {
+			dlt = openDialogCmd(dialogInfo, "Containers", fmt.Sprintf("Started %d container(s)", msg.started))
 		} else {
-			dlt = openDialogCmd(dialogError, "Containers", msg.err.Error())
+			body := fmt.Sprintf("Started %d container(s). Failed %d container(s).", msg.started, msg.failed)
+			if msg.firstErr != nil {
+				body = fmt.Sprintf("%s\n\n%s", body, msg.firstErr.Error())
+			}
+			dlt = openDialogCmd(dialogError, "Containers", body)
 		}
 		return p, tea.Sequence(
 			setGlobalBusyCmd(false),
@@ -182,7 +182,8 @@ func (p containersPage) View() string {
 		p.km.DeleteSingle,
 		p.km.EnterDeleteMode,
 		p.km.Logs,
-		p.km.Start,
+		p.km.StartSingle,
+		p.km.EnterStartMode,
 		p.km.Refresh,
 		p.gkm.Quit,
 	)
@@ -242,7 +243,10 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 			return openLogsMsg{id: c.ID, name: name}
 		}, true
 
-	case key.Matches(msg, p.km.Start):
+	case key.Matches(msg, p.km.EnterStartMode):
+		return p, func() tea.Msg { return openContainersStartMsg{} }, true
+
+	case key.Matches(msg, p.km.StartSingle):
 		c, ok := p.cursorContainer()
 		if !ok {
 			return p, nil, true
