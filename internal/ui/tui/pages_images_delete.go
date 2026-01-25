@@ -215,6 +215,15 @@ func (p imagesDeletePage) handleKey(msg tea.KeyMsg) (imagesDeletePage, tea.Cmd, 
 	}
 
 	switch {
+	case msg.Type == tea.KeyEnter:
+		// no-op: delete mode does not use Enter.
+		//
+		// Why:
+		// - Execute is bound explicitly (e.g. "x") to reduce accidental execution.
+		// - Explicitly swallowing Enter prevents the table component from reacting to it and
+		// keeps destructive operations behind a deliberate key press.
+		return p, nil, true
+
 	case key.Matches(msg, p.km.Refresh):
 		p.loading = true
 		p.selected = map[string]struct{}{}
@@ -338,7 +347,7 @@ func rowsFromImageSummariesDelete(
 
 	out := make([]table.Row, 0, len(items))
 	for _, img := range items {
-		sel := deleteSelMark(img.ID, selected, nonDeletable, busy)
+		sel := selMark(img.ID, selected, nonDeletable, busy)
 
 		// Why trim sha256 prefix:
 		// - Docker image IDs are long; trimming improves table readability.

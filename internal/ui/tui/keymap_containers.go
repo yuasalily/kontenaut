@@ -9,7 +9,8 @@ type containersKeyMap struct {
 	DeleteSingle    key.Binding
 	EnterDeleteMode key.Binding
 	Logs            key.Binding
-	Start           key.Binding
+	StartSingle     key.Binding
+	EnterStartMode  key.Binding
 
 	// Delete mode
 	Select  key.Binding
@@ -35,9 +36,13 @@ func newContainersKeyMap() containersKeyMap {
 			key.WithKeys("l"),
 			key.WithHelp("l", "logs"),
 		),
-		Start: key.NewBinding(
+		StartSingle: key.NewBinding(
 			key.WithKeys("s"),
 			key.WithHelp("s", "start"),
+		),
+		EnterStartMode: key.NewBinding(
+			key.WithKeys("S"),
+			key.WithHelp("S", "start mode"),
 		),
 		Select: key.NewBinding(
 			key.WithKeys(" ", "space"),
