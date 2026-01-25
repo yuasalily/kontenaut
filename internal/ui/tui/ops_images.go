@@ -12,7 +12,7 @@ import (
 //
 // Why shared:
 // - Images normal mode and delete mode need the same operations:
-//   list images, list locked images, and delete images.
+//   list images, list non-deletable images, and delete images.
 // - Keep IO inside Cmd (not Update) and keep pages focused on UI state.
 
 type imagesLoadedMsg []engine.ImageSummary
@@ -28,19 +28,18 @@ func listImagesCmd(imageUC *usecase.ImageUsecase) tea.Cmd {
 	}
 }
 
-// lockedImagesLoadedMsg is kept as message type name to churn in page code paths
-// that already pattern-match on this symbol. It represents "non-deletable image IDs"
+// nonDeletableImagesLoadedMsg represents "non-deletable image IDs"
 // (images referenced by any container).
-type lockedImagesLoadedMsg map[string]struct{}
+type nonDeletableImagesLoadedMsg map[string]struct{}
 type nonDeletableImagesLoadFailedMsg struct{ err error }
 
 func listNonDeletableImagesCmd(imageUC *usecase.ImageUsecase) tea.Cmd {
 	return func() tea.Msg {
-		locked, err := imageUC.NonDeletableImageIDs(context.Background())
+		nonDeletable, err := imageUC.NonDeletableImageIDs(context.Background())
 		if err != nil {
 			return nonDeletableImagesLoadFailedMsg{err: err}
 		}
-		return lockedImagesLoadedMsg(locked)
+		return nonDeletableImagesLoadedMsg(nonDeletable)
 	}
 }
 

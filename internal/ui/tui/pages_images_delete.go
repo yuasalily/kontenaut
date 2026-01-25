@@ -35,9 +35,9 @@ type imagesDeletePage struct {
 
 	imagesTable table.Model
 
-	selected map[string]struct{}
-	nonDeletable   map[string]struct{}
-	busy     map[string]struct{}
+	selected     map[string]struct{}
+	nonDeletable map[string]struct{}
+	busy         map[string]struct{}
 
 	gkm globalKeyMap
 	km  imagesKeyMap
@@ -50,15 +50,15 @@ var _ Page = imagesDeletePage{}
 
 func newImagesDeletePage(gkm globalKeyMap, imagesUC *usecase.ImageUsecase) Page {
 	return imagesDeletePage{
-		imageUC:     imagesUC,
-		loading:     true,
-		imagesTable: newImagesTableDelete(),
-		selected:    map[string]struct{}{},
-		nonDeletable:      map[string]struct{}{},
-		busy:        map[string]struct{}{},
-		gkm:         gkm,
-		km:          newImagesKeyMap(),
-		sp:          newLoadingSpinner(),
+		imageUC:      imagesUC,
+		loading:      true,
+		imagesTable:  newImagesTableDelete(),
+		selected:     map[string]struct{}{},
+		nonDeletable: map[string]struct{}{},
+		busy:         map[string]struct{}{},
+		gkm:          gkm,
+		km:           newImagesKeyMap(),
+		sp:           newLoadingSpinner(),
 	}
 }
 
@@ -107,7 +107,7 @@ func (p imagesDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p = p.setIdle()
 		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
 
-	case lockedImagesLoadedMsg:
+	case nonDeletableImagesLoadedMsg:
 		p.nonDeletable = nonDeletableImageIDs(map[string]struct{}(msg))
 		if len(p.images) > 0 {
 			p.imagesTable.SetRows(rowsFromImageSummariesDelete(
