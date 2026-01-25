@@ -57,19 +57,15 @@ func deleteContainersCmd(containerUC *usecase.ContainerUsecase, ids []string) te
 	}
 }
 
-func lockedContainerIDs(items []engine.ContainerSummary) map[string]struct{} {
-	out := make(map[string]struct{}, len(items))
-	for _, c := range items {
-		if isContainerRunning(c.State) {
-			out[c.ID] = struct{}{}
-		}
-	}
-	return out
+type containerStartedMsg struct {
+	id   string
+	name string
+	err  error
 }
 
-func isContainerRunning(state string) bool {
-	// Docker "State" is a machine-readable string like:
-	// "running", "exited", ...
-	// We treat "running" as locked (not deletable without -f)
-	return state == "running"
+func startContainerCmd(containerUC *usecase.ContainerUsecase, id, name string) tea.Cmd {
+	return func() tea.Msg {
+		err := containerUC.Start(context.Background(), id)
+		return containerStartedMsg{id: id, name: name, err: err}
+	}
 }

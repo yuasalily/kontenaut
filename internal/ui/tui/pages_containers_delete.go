@@ -93,7 +93,7 @@ func (p containersDeletePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case containersLoadedMsg:
 		p = p.setIdle()
 		p.containers = []engine.ContainerSummary(msg)
-		p.locked = lockedContainerIDs(p.containers)
+		p.locked = nonDeletableContainerIDs(p.containers)
 		p.containersTable.SetRows(rowsFromContainerSummariesDelete(
 			p.containers,
 			p.containersTable.Columns(),

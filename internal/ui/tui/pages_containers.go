@@ -13,6 +13,10 @@ import (
 )
 
 type deleteSingleContainerConfirmedMsg struct{ id string }
+type startSingleContainerConfirmedMsg struct {
+	id   string
+	name string
+}
 
 // containersPage renders the Containers list (normal mode).
 //
@@ -24,14 +28,13 @@ type containersPage struct {
 
 	loading    bool
 	deleting   bool
+	starting   bool
 	containers []engine.ContainerSummary
 
 	width  int
 	height int
 
 	containersTable table.Model
-
-	locked map[string]struct{}
 
 	gkm globalKeyMap
 	km  containersKeyMap
@@ -47,7 +50,6 @@ func newContainersPage(gkm globalKeyMap, containerUC *usecase.ContainerUsecase) 
 		containerUC:     containerUC,
 		loading:         true,
 		containersTable: newContainersTableNormal(),
-		locked:          map[string]struct{}{},
 		gkm:             gkm,
 		km:              newContainersKeyMap(),
 		sp:              newLoadingSpinner(),
@@ -85,7 +87,6 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case containersLoadedMsg:
 		p = p.setIdle()
 		p.containers = []engine.ContainerSummary(msg)
-		p.locked = lockedContainerIDs(p.containers)
 		p.containersTable.SetRows(rowsFromContainerSummariesNormal(p.containers, p.containersTable.Columns()))
 		return p, nil
 
@@ -106,7 +107,6 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	case containersDeletedMsg:
 		p.deleting = false
 		p.loading = true
-		p.locked = map[string]struct{}{}
 
 		var dlt tea.Cmd
 		if msg.failed == 0 {
@@ -117,6 +117,36 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 				body = fmt.Sprintf("%s\n\n%s", body, msg.firstErr.Error())
 			}
 			dlt = openDialogCmd(dialogError, "Containers", body)
+		}
+		return p, tea.Sequence(
+			setGlobalBusyCmd(false),
+			listContainersCmd(p.containerUC),
+			dlt,
+		)
+
+	case startSingleContainerConfirmedMsg:
+		if msg.id == "" {
+			return p, nil
+		}
+		p.starting = true
+		return p, tea.Sequence(
+			setGlobalBusyCmd(true),
+			startContainerCmd(p.containerUC, msg.id, msg.name),
+		)
+
+	case containerStartedMsg:
+		p.starting = false
+		p.loading = true
+
+		name := strings.TrimSpace(msg.name)
+		if name == "" {
+			name = "Unnamed"
+		}
+		var dlt tea.Cmd
+		if msg.err == nil {
+			dlt = openDialogCmd(dialogInfo, "Containers", fmt.Sprintf("Started container %q.", name))
+		} else {
+			dlt = openDialogCmd(dialogError, "Containers", msg.err.Error())
 		}
 		return p, tea.Sequence(
 			setGlobalBusyCmd(false),
@@ -137,6 +167,9 @@ func (p containersPage) View() string {
 	if p.deleting {
 		return "Deleting..."
 	}
+	if p.starting {
+		return "Starting..."
+	}
 
 	var b strings.Builder
 	b.WriteString("Containers\n")
@@ -149,6 +182,7 @@ func (p containersPage) View() string {
 		p.km.DeleteSingle,
 		p.km.EnterDeleteMode,
 		p.km.Logs,
+		p.km.Start,
 		p.km.Refresh,
 		p.gkm.Quit,
 	)
@@ -159,7 +193,7 @@ func (p containersPage) View() string {
 }
 
 func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool) {
-	if p.loading || p.deleting {
+	if p.loading || p.deleting || p.starting {
 		return p, nil, false
 	}
 
@@ -175,7 +209,6 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 
 	case key.Matches(msg, p.km.Refresh):
 		p.loading = true
-		p.locked = map[string]struct{}{}
 		return p, p.Init(), true
 
 	case key.Matches(msg, p.km.EnterDeleteMode):
@@ -186,7 +219,7 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 		if !ok {
 			return p, nil, true
 		}
-		if p.isLocked(c.ID) {
+		if !canDeleteContainer(c.ID) {
 			return p, openDialogCmd(dialogInfo, "Containers", "this container is running and cannot be deleted."), true
 		}
 		return p, openConfirmDialogCmd(
@@ -208,6 +241,26 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 		return p, func() tea.Msg {
 			return openLogsMsg{id: c.ID, name: name}
 		}, true
+
+	case key.Matches(msg, p.km.Start):
+		c, ok := p.cursorContainer()
+		if !ok {
+			return p, nil, true
+		}
+		if !canStartContainer(c.State) {
+			return p, openDialogCmd(dialogInfo, "Containers", "this container cannot be started in the current state."), true
+		}
+		name := strings.TrimSpace(c.Name)
+		if name == "" {
+			name = "Unnamed"
+		}
+		body := fmt.Sprintf("Start container %q?", name)
+		return p, openConfirmDialogCmd(
+			"Containers",
+			body,
+			startSingleContainerConfirmedMsg{id: c.ID, name: name},
+			nil,
+		), true
 	}
 
 	return p, nil, false
@@ -293,13 +346,9 @@ func (p containersPage) cursorContainer() (engine.ContainerSummary, bool) {
 	return p.containers[i], true
 }
 
-func (p containersPage) isLocked(id string) bool {
-	_, ok := p.locked[id]
-	return ok
-}
-
 func (p containersPage) setIdle() containersPage {
 	p.loading = false
 	p.deleting = false
+	p.starting = false
 	return p
 }
