@@ -149,6 +149,16 @@ func (d *DockerEngine) ListContainers(ctx context.Context) ([]engine.ContainerSu
 	return out, nil
 }
 
+// StartContainer starts a container.
+func (d *DockerEngine) StartContainer(ctx context.Context, containerID string) error {
+	// Use default start options for now.
+	// Why:
+	// - Keep API minimal and consistent with "startup selects endpoint only".
+	// - Advanced behavior (attach, wait readiness) is intentionally out of scope.
+	_, err := d.cli.ContainerStart(ctx, containerID, client.ContainerStartOptions{})
+	return err
+}
+
 // RemoveImage removes an image from the local image store.
 func (d *DockerEngine) RemoveImage(ctx context.Context, imageID string) error {
 	_, err := d.cli.ImageRemove(ctx, imageID, client.ImageRemoveOptions{

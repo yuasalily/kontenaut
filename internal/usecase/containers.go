@@ -27,6 +27,11 @@ func (u *ContainerUsecase) List(ctx context.Context) ([]engine.ContainerSummary,
 	return u.eng.ListContainers(ctx)
 }
 
+// Start starts a container.
+func (u *ContainerUsecase) Start(ctx context.Context, containerID string) error {
+	return u.eng.StartContainer(ctx, containerID)
+}
+
 // Delete removes a container without forcing.
 //
 // Why:

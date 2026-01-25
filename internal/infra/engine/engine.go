@@ -23,6 +23,13 @@ type Engine interface {
 	// ListContainers returns containers for the Containers page.
 	ListContainers(ctx context.Context) ([]ContainerSummary, error)
 
+	// StartContainer starts a container.
+	//
+	// Note:
+	// This method returns when the daemon has accepted and completed the start operation.
+	// It does NOT wait for the container's application to become "ready".
+	StartContainer(ctx context.Context, containerID string) error
+
 	// RemoveImage removes an image.
 	// Implementations may return an error when the image is in use.
 	RemoveImage(ctx context.Context, imageID string) error
