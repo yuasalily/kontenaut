@@ -26,8 +26,7 @@ func (u *ImageUsecase) Delete(ctx context.Context, imageID string) error {
 	return u.eng.RemoveImage(ctx, imageID)
 }
 
-
-// NonDeletableImageIDs returns image IDs that are currently references by any container.
+// NonDeletableImageIDs returns image IDs that are currently referenced by any container.
 //
 // Why:
 // - Docker prevents deleting images that are in use.
@@ -38,12 +37,12 @@ func (u *ImageUsecase) NonDeletableImageIDs(ctx context.Context) (map[string]str
 		return nil, err
 	}
 
-	locked := make(map[string]struct{}, len(containers))
+	nonDeletable := make(map[string]struct{}, len(containers))
 	for _, c := range containers {
 		if c.ImageID == "" {
 			continue
 		}
-		locked[c.ImageID] = struct{}{}
+		nonDeletable[c.ImageID] = struct{}{}
 	}
-	return locked, nil
+	return nonDeletable, nil
 }

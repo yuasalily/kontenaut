@@ -35,7 +35,7 @@ func (u *ContainerUsecase) Start(ctx context.Context, containerID string) error 
 // Delete removes a container without forcing.
 //
 // Why:
-// - The TUI treats running containers as "locked" and does not offer force delete.
+// - The TUI treats running containers as "non-deletable" and does not offer force delete.
 func (u *ContainerUsecase) Delete(ctx context.Context, containerID string) error {
 	return u.eng.RemoveContainer(ctx, containerID, false)
 }

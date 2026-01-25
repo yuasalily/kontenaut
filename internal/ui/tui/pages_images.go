@@ -92,7 +92,7 @@ func (p imagesPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 		p = p.setIdle()
 		return p, openDialogCmd(dialogError, "Images", msg.err.Error())
 
-	case lockedImagesLoadedMsg:
+	case nonDeletableImagesLoadedMsg:
 		// Keep policy decisions in policy_images.go.
 		p.nonDeletable = nonDeletableImageIDs(map[string]struct{}(msg))
 		return p, nil

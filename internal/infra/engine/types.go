@@ -16,7 +16,7 @@ type ImageSummary struct {
 
 // ContainerSummary is a view-model friendly container summary for the Containers page.
 //
-// State is a machine-readable value used for decisions such as "locked" (e.g. running containers).
+// State is a machine-readable value used for decisions such as "non-deletable" (e.g. running containers).
 type ContainerSummary struct {
 	ID      string
 	Name    string
