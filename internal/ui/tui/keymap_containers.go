@@ -12,8 +12,11 @@ type containersKeyMap struct {
 	StartSingle     key.Binding
 	EnterStartMode  key.Binding
 	StopSingle      key.Binding
+	RestartSingle   key.Binding
 
-	// Delete mode
+	// Action mode
+	//
+	// These bindings are shared by multi-select action pages.
 	Select  key.Binding
 	Execute key.Binding
 	Exit    key.Binding
@@ -48,6 +51,10 @@ func newContainersKeyMap() containersKeyMap {
 		StopSingle: key.NewBinding(
 			key.WithKeys("t"),
 			key.WithHelp("t", "stop"),
+		),
+		RestartSingle: key.NewBinding(
+			key.WithKeys("a"),
+			key.WithHelp("a", "restart"),
 		),
 		Select: key.NewBinding(
 			key.WithKeys(" ", "space"),

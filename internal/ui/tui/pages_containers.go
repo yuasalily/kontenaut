@@ -12,13 +12,21 @@ import (
 	"github.com/yuasalily/kontenaut/internal/usecase"
 )
 
-type deleteSingleContainerConfirmedMsg struct{ id string }
+type deleteSingleContainerConfirmedMsg struct {
+	id string
+}
+
 type startSingleContainerConfirmedMsg struct {
 	id   string
 	name string
 }
 
 type stopSingleContainerConfirmedMsg struct {
+	id   string
+	name string
+}
+
+type restartSingleContainerConfirmedMsg struct {
 	id   string
 	name string
 }
@@ -35,6 +43,7 @@ type containersPage struct {
 	deleting   bool
 	starting   bool
 	stopping   bool
+	restarting bool
 	containers []engine.ContainerSummary
 
 	width  int
@@ -189,6 +198,36 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			listContainersCmd(p.containerUC),
 			dlt,
 		)
+
+	case restartSingleContainerConfirmedMsg:
+		if msg.id == "" {
+			return p, nil
+		}
+		p.restarting = true
+		return p, tea.Sequence(
+			setGlobalBusyCmd(true),
+			restartContainersCmd(p.containerUC, []string{msg.id}),
+		)
+
+	case containersRestartedMsg:
+		p.restarting = false
+		p.loading = true
+
+		var dlt tea.Cmd
+		if msg.failed == 0 {
+			dlt = openDialogCmd(dialogInfo, "Containers", fmt.Sprintf("Restarted %d container(s)", msg.restarted))
+		} else {
+			body := fmt.Sprintf("Restarted %d container(s). Failed %d container(s).", msg.restarted, msg.failed)
+			if msg.firstErr != nil {
+				body = fmt.Sprintf("%s\n\n%s", body, msg.firstErr.Error())
+			}
+			dlt = openDialogCmd(dialogError, "Containers", body)
+		}
+		return p, tea.Sequence(
+			setGlobalBusyCmd(false),
+			listContainersCmd(p.containerUC),
+			dlt,
+		)
 	}
 
 	var cmd tea.Cmd
@@ -209,6 +248,9 @@ func (p containersPage) View() string {
 	if p.stopping {
 		return "Stopping..."
 	}
+	if p.restarting {
+		return "Restarting..."
+	}
 
 	var b strings.Builder
 	b.WriteString("Containers\n")
@@ -224,6 +266,7 @@ func (p containersPage) View() string {
 		p.km.StartSingle,
 		p.km.EnterStartMode,
 		p.km.StopSingle,
+		p.km.RestartSingle,
 		p.km.Refresh,
 		p.gkm.Quit,
 	)
@@ -234,7 +277,7 @@ func (p containersPage) View() string {
 }
 
 func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool) {
-	if p.loading || p.deleting || p.starting || p.stopping {
+	if p.loading || p.deleting || p.starting || p.stopping || p.restarting {
 		return p, nil, false
 	}
 
@@ -323,6 +366,25 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 			"Containers",
 			body,
 			stopSingleContainerConfirmedMsg{id: c.ID, name: name},
+			nil,
+		), true
+
+	case key.Matches(msg, p.km.RestartSingle):
+		c, ok := p.cursorContainer()
+		if !ok {
+			return p, nil, true
+		}
+		if !canRestartContainer(c.State) {
+			return p, openDialogCmd(dialogInfo, "Containers", "this container cannot be restarted in the current state."), true
+		}
+		name := strings.TrimSpace(c.Name)
+		if name == "" {
+			name = "Unnamed"
+		}
+		body := fmt.Sprintf("Restart container %q?", name)
+		return p, openConfirmDialogCmd(
+			"Containers",
+			body, restartSingleContainerConfirmedMsg{id: c.ID, name: name},
 			nil,
 		), true
 	}
@@ -415,5 +477,6 @@ func (p containersPage) setIdle() containersPage {
 	p.deleting = false
 	p.starting = false
 	p.stopping = false
+	p.restarting = false
 	return p
 }
