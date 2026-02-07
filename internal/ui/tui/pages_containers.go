@@ -18,6 +18,11 @@ type startSingleContainerConfirmedMsg struct {
 	name string
 }
 
+type stopSingleContainerConfirmedMsg struct {
+	id   string
+	name string
+}
+
 // containersPage renders the Containers list (normal mode).
 //
 // Why:
@@ -29,6 +34,7 @@ type containersPage struct {
 	loading    bool
 	deleting   bool
 	starting   bool
+	stopping   bool
 	containers []engine.ContainerSummary
 
 	width  int
@@ -153,6 +159,36 @@ func (p containersPage) Update(msg tea.Msg) (Page, tea.Cmd) {
 			listContainersCmd(p.containerUC),
 			dlt,
 		)
+
+	case stopSingleContainerConfirmedMsg:
+		if msg.id == "" {
+			return p, nil
+		}
+		p.stopping = true
+		return p, tea.Sequence(
+			setGlobalBusyCmd(true),
+			stopContainersCmd(p.containerUC, []string{msg.id}),
+		)
+
+	case containersStoppedMsg:
+		p.stopping = false
+		p.loading = true
+
+		var dlt tea.Cmd
+		if msg.failed == 0 {
+			dlt = openDialogCmd(dialogInfo, "Containers", fmt.Sprintf("Stopped %d container(s)", msg.stopped))
+		} else {
+			body := fmt.Sprintf("Stopped %d container(s). Failed %d container(s).", msg.stopped, msg.failed)
+			if msg.firstErr != nil {
+				body = fmt.Sprintf("%s\n\n%s", body, msg.firstErr.Error())
+			}
+			dlt = openDialogCmd(dialogError, "Containers", body)
+		}
+		return p, tea.Sequence(
+			setGlobalBusyCmd(false),
+			listContainersCmd(p.containerUC),
+			dlt,
+		)
 	}
 
 	var cmd tea.Cmd
@@ -170,6 +206,9 @@ func (p containersPage) View() string {
 	if p.starting {
 		return "Starting..."
 	}
+	if p.stopping {
+		return "Stopping..."
+	}
 
 	var b strings.Builder
 	b.WriteString("Containers\n")
@@ -184,6 +223,7 @@ func (p containersPage) View() string {
 		p.km.Logs,
 		p.km.StartSingle,
 		p.km.EnterStartMode,
+		p.km.StopSingle,
 		p.km.Refresh,
 		p.gkm.Quit,
 	)
@@ -194,7 +234,7 @@ func (p containersPage) View() string {
 }
 
 func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool) {
-	if p.loading || p.deleting || p.starting {
+	if p.loading || p.deleting || p.starting || p.stopping {
 		return p, nil, false
 	}
 
@@ -263,6 +303,26 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 			"Containers",
 			body,
 			startSingleContainerConfirmedMsg{id: c.ID, name: name},
+			nil,
+		), true
+
+	case key.Matches(msg, p.km.StopSingle):
+		c, ok := p.cursorContainer()
+		if !ok {
+			return p, nil, true
+		}
+		if !canStopContainer(c.State) {
+			return p, openDialogCmd(dialogInfo, "Containers", "this container cannot be stopped in the current state."), true
+		}
+		name := strings.TrimSpace(c.Name)
+		if name == "" {
+			name = "Unnamed"
+		}
+		body := fmt.Sprintf("Stop container %q?", name)
+		return p, openConfirmDialogCmd(
+			"Containers",
+			body,
+			stopSingleContainerConfirmedMsg{id: c.ID, name: name},
 			nil,
 		), true
 	}
@@ -354,5 +414,6 @@ func (p containersPage) setIdle() containersPage {
 	p.loading = false
 	p.deleting = false
 	p.starting = false
+	p.stopping = false
 	return p
 }

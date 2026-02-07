@@ -159,6 +159,16 @@ func (d *DockerEngine) StartContainer(ctx context.Context, containerID string) e
 	return err
 }
 
+// StopContainer stops a container.
+func (d *DockerEngine) StopContainer(ctx context.Context, containerID string) error {
+	// Use default stop options for now.
+	// Why:
+	// - Keep API minimal and consistent with startup/config philosophy.
+	// - Advanced behavior (timeouts, signals) is intentionally out of scope.
+	_, err := d.cli.ContainerStop(ctx, containerID, client.ContainerStopOptions{})
+	return err
+}
+
 // RemoveImage removes an image from the local image store.
 func (d *DockerEngine) RemoveImage(ctx context.Context, imageID string) error {
 	_, err := d.cli.ImageRemove(ctx, imageID, client.ImageRemoveOptions{

@@ -58,6 +58,38 @@ func deleteContainersCmd(containerUC *usecase.ContainerUsecase, ids []string) te
 	}
 }
 
+type containersStoppedMsg struct {
+	stopped  int
+	failed   int
+	firstErr error
+}
+
+// stopContainersCmd stops containers sequentially.
+func stopContainersCmd(containerUC *usecase.ContainerUsecase, ids []string) tea.Cmd {
+	return func() tea.Msg {
+		stopped := 0
+		failed := 0
+		var firstErr error
+
+		for _, id := range ids {
+			if err := containerUC.Stop(context.Background(), id); err != nil {
+				failed++
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			stopped++
+		}
+
+		return containersStoppedMsg{
+			stopped:  stopped,
+			failed:   failed,
+			firstErr: firstErr,
+		}
+	}
+}
+
 type containersStartedMsg struct {
 	started  int
 	failed   int
