@@ -32,6 +32,11 @@ func (u *ContainerUsecase) Start(ctx context.Context, containerID string) error 
 	return u.eng.StartContainer(ctx, containerID)
 }
 
+// Stop stops a running container.
+func (u *ContainerUsecase) Stop(ctx context.Context, containerID string) error {
+	return u.eng.StopContainer(ctx, containerID)
+}
+
 // Delete removes a container without forcing.
 //
 // Why:

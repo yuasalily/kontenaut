@@ -7,6 +7,13 @@ import "github.com/yuasalily/kontenaut/internal/infra/engine"
 // - Containers have multiple action (start/stop/restart/delete/logs).
 // - Keep action availability decisions in one place for consistency and future expansion.
 
+func canStopContainer(state string) bool {
+	// Minimal policy (initial):
+	// - running: stop allowed
+	// - other states: conservative (not allowed)
+	return state == "running"
+}
+
 func canStartContainer(state string) bool {
 	// Minimal policy (initial):
 	// - exited/created: start allowed
