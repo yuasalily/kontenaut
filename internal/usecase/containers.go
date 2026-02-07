@@ -37,6 +37,11 @@ func (u *ContainerUsecase) Stop(ctx context.Context, containerID string) error {
 	return u.eng.StopContainer(ctx, containerID)
 }
 
+// Restart restarts a running container.
+func (u *ContainerUsecase) Restart(ctx context.Context, containerID string) error {
+	return u.eng.RestartContainer(ctx, containerID)
+}
+
 // Delete removes a container without forcing.
 //
 // Why:

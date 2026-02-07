@@ -14,6 +14,13 @@ func canStopContainer(state string) bool {
 	return state == "running"
 }
 
+func canRestartContainer(state string) bool {
+	// Minimal policy (initial):
+	// - running: restart allowed
+	// - other states: conservative (not allowed)
+	return state == "running"
+}
+
 func canStartContainer(state string) bool {
 	// Minimal policy (initial):
 	// - exited/created: start allowed

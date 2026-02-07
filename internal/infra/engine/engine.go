@@ -37,6 +37,13 @@ type Engine interface {
 	// It does NOT wait for the container's application to become "ready".
 	StopContainer(ctx context.Context, containerID string) error
 
+	// RestartContainer restarts a running container.
+	//
+	// Note:
+	// This method returns when the daemon has accepted and completed the restart operation.
+	// It does NOT wait for the container's application to become "ready".
+	RestartContainer(ctx context.Context, containerID string) error
+
 	// RemoveImage removes an image.
 	// Implementations may return an error when the image is in use.
 	RemoveImage(ctx context.Context, imageID string) error

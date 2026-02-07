@@ -90,6 +90,38 @@ func stopContainersCmd(containerUC *usecase.ContainerUsecase, ids []string) tea.
 	}
 }
 
+type containersRestartedMsg struct {
+	restarted int
+	failed    int
+	firstErr  error
+}
+
+// restartContainersCmd restarts containers sequentially.
+func restartContainersCmd(containerUC *usecase.ContainerUsecase, ids []string) tea.Cmd {
+	return func() tea.Msg {
+		restarted := 0
+		failed := 0
+		var firstErr error
+
+		for _, id := range ids {
+			if err := containerUC.Restart(context.Background(), id); err != nil {
+				failed++
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			restarted++
+		}
+
+		return containersRestartedMsg{
+			restarted: restarted,
+			failed:    failed,
+			firstErr:  firstErr,
+		}
+	}
+}
+
 type containersStartedMsg struct {
 	started  int
 	failed   int
