@@ -6,14 +6,15 @@ type containersKeyMap struct {
 	Refresh key.Binding
 
 	// Normal mode
-	DeleteSingle    key.Binding
-	EnterDeleteMode key.Binding
-	Logs            key.Binding
-	StartSingle     key.Binding
-	EnterStartMode  key.Binding
-	StopSingle      key.Binding
-	EnterStopMode   key.Binding
-	RestartSingle   key.Binding
+	DeleteSingle     key.Binding
+	EnterDeleteMode  key.Binding
+	Logs             key.Binding
+	StartSingle      key.Binding
+	EnterStartMode   key.Binding
+	StopSingle       key.Binding
+	EnterStopMode    key.Binding
+	RestartSingle    key.Binding
+	EnterRestartMode key.Binding
 
 	// Action mode
 	//
@@ -60,6 +61,10 @@ func newContainersKeyMap() containersKeyMap {
 		RestartSingle: key.NewBinding(
 			key.WithKeys("a"),
 			key.WithHelp("a", "restart"),
+		),
+		EnterRestartMode: key.NewBinding(
+			key.WithKeys("A"),
+			key.WithHelp("A", "restart"),
 		),
 		Select: key.NewBinding(
 			key.WithKeys(" ", "space"),

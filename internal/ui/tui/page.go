@@ -31,6 +31,7 @@ type openImagesDeleteMsg struct{}
 type openContainersDeleteMsg struct{}
 type openContainersStartMsg struct{}
 type openContainersStopMsg struct{}
+type openContainersRestartMsg struct{}
 
 type openLogsMsg struct {
 	// id is a container ID.
