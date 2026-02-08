@@ -12,6 +12,7 @@ type containersKeyMap struct {
 	StartSingle     key.Binding
 	EnterStartMode  key.Binding
 	StopSingle      key.Binding
+	EnterStopMode   key.Binding
 	RestartSingle   key.Binding
 
 	// Action mode
@@ -51,6 +52,10 @@ func newContainersKeyMap() containersKeyMap {
 		StopSingle: key.NewBinding(
 			key.WithKeys("t"),
 			key.WithHelp("t", "stop"),
+		),
+		EnterStopMode: key.NewBinding(
+			key.WithKeys("T"),
+			key.WithHelp("T", "stop mode"),
 		),
 		RestartSingle: key.NewBinding(
 			key.WithKeys("a"),

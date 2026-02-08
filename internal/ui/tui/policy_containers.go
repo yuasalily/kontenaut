@@ -47,6 +47,17 @@ func nonStartableContainerIDs(items []engine.ContainerSummary) map[string]struct
 	return out
 }
 
+// nonStoppableContainerIDs returns IDs of containers that cannot be stopped by policy.
+func nonStoppableContainerIDs(items []engine.ContainerSummary) map[string]struct{} {
+	out := make(map[string]struct{}, len(items))
+	for _, c := range items {
+		if !canStopContainer(c.State) {
+			out[c.ID] = struct{}{}
+		}
+	}
+	return out
+}
+
 // nonDeletableContainerIDs returns IDs of containers that cannot be deleted by policy.
 func nonDeletableContainerIDs(items []engine.ContainerSummary) map[string]struct{} {
 	out := make(map[string]struct{}, len(items))

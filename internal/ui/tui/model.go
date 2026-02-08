@@ -218,6 +218,14 @@ func (m routerModel) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.applyWindowSizeToCurrentPage()
 		return m, tea.Batch(closeCmd, m.currentPage.Init())
 
+	case openContainersStopMsg:
+		// Keep currentPageID as pageContainers so the navbar stays on "Containers".
+		closeCmd := m.closeCurrentPageCmd()
+		m.currentPageID = pageContainers
+		m.currentPage = newContainersStopPage(m.km, m.containerUC)
+		m = m.applyWindowSizeToCurrentPage()
+		return m, tea.Batch(closeCmd, m.currentPage.Init())
+
 	case openLogsMsg:
 		// Why logs are opened via Msg:
 		// - Keeps navigation page-agnostic (pages emit messages; router decides transitions).

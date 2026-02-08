@@ -266,6 +266,7 @@ func (p containersPage) View() string {
 		p.km.StartSingle,
 		p.km.EnterStartMode,
 		p.km.StopSingle,
+		p.km.EnterStopMode,
 		p.km.RestartSingle,
 		p.km.Refresh,
 		p.gkm.Quit,
@@ -348,6 +349,9 @@ func (p containersPage) handleKey(msg tea.KeyMsg) (containersPage, tea.Cmd, bool
 			startSingleContainerConfirmedMsg{id: c.ID, name: name},
 			nil,
 		), true
+
+	case key.Matches(msg, p.km.EnterStopMode):
+		return p, func() tea.Msg { return openContainersStopMsg{} }, true
 
 	case key.Matches(msg, p.km.StopSingle):
 		c, ok := p.cursorContainer()
