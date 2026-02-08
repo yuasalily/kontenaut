@@ -30,6 +30,7 @@ type navigateMsg struct{ to pageID }
 type openImagesDeleteMsg struct{}
 type openContainersDeleteMsg struct{}
 type openContainersStartMsg struct{}
+type openContainersStopMsg struct{}
 
 type openLogsMsg struct {
 	// id is a container ID.
